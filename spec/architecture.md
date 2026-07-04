@@ -103,8 +103,13 @@ refutation) · `partial` (holds under conditions, or sources disagree).
 
 ### Output contract (JSON)
 
-The run's last message is only JSON, no wrappers. `hypotheses` contains only those this run touched;
+The run's last message is the JSON contract. `hypotheses` contains only those this run touched;
 the full state lives in `LEDGER.md`.
+
+> **v0.0 finding.** The canon asks for bare JSON, but in the by-hand run the model wrapped it in a
+> ` ```json … ``` ` fence. The contract is therefore **"JSON, optionally fenced"**: the orchestrator's
+> parser strips an optional code fence before parsing. Pinned by the v0.0 contract test
+> (`tests/test_agent_output_contract.py`, `extract_contract`).
 
 ```json
 {
@@ -135,7 +140,9 @@ Hard invariants — any implementation must hold them.
 Technical implementation of the call:
 
 ```
-claude -p --agents brainstormer \
+claude -p "<kickoff prompt>" \
+  --append-system-prompt "$(<brainstormer canon body, frontmatter stripped>)" \
+  --model claude-opus-4-8 \
   --allowedTools WebSearch,WebFetch,Read,Write \
   --disallowedTools Bash,Task \
   --max-turns N --output-format json
@@ -143,6 +150,15 @@ claude -p --agents brainstormer \
 
 run with `cwd` = the session directory. We duplicate the same policy in the session directory's
 `.claude/settings.json` [tentative], so it holds regardless of how the process was started.
+
+> **v0.0 finding — how the agent is actually launched.** The naïve `claude -p --agents brainstormer`
+> does **not** run *as* the brainstormer: `--agents` only registers it as a **sub-agent** invocable via
+> the `Task` tool — which is disallowed here — so the default agent answers from priors, never searches,
+> and writes no workspace files. The verified working form runs the **canon as the main system prompt**
+> (`--append-system-prompt` with the agent body, frontmatter stripped), which is what the v0.1
+> orchestrator's `AgentRunner` seam encapsulates. Also note: Claude Code's `WebSearch` is **not** counted
+> in the run envelope's `usage.server_tool_use.web_search_requests` (it reads `0` even when the agent
+> searched heavily) — real web use shows up as sourced URLs in `LEDGER.md` / `SOURCES.md`.
 
 ## Interface — commands
 
