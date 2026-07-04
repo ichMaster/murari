@@ -73,7 +73,7 @@ are both inside, so no `../`). Files:
 
 | file | role | written by |
 |---|---|---|
-| `TOPIC.md` | topic and seeds from the user | chat layer (read-only to the agent) |
+| `TOPIC.md` | the user's **topic** (any seeds are chat-derived from replies — never hand-authored; the agent generates hypotheses itself) | chat layer (read-only to the agent) |
 | `LEDGER.md` | full current state of all hypotheses + dry-run counter | agent |
 | `SOURCES.md` | one line per source: url and what was taken from it | agent |
 | `IDEAS.md` | accumulated ideas with a `born_from` field | agent |

@@ -66,8 +66,10 @@ scripts/new-session.sh [name]
 
 Makes `.murari/brainstorm-sessions/session-<datetime>[-slug]/` with `input/` and
 `output/artifacts/`, and copies the [`examples/TOPIC.md`](../examples/TOPIC.md) template into
-`input/TOPIC.md`. Edit that file: a concrete topic plus 1–2 **seeds** that have a factual core
-the live web can confirm or refute (in Ukrainian; search queries can be any language).
+`input/TOPIC.md`. Edit that file to hold **just your topic** — one or two sentences (in
+Ukrainian; search queries can be any language). You don't write hypotheses or "seeds": the
+agent generates and verifies those itself (its `diverge` step) and proposes the next angles in
+`next_probes`. (In v0.2 the chat layer will turn your replies into steering automatically.)
 
 > Sessions default to `<repo>/.murari`. Override the base with `MURARI_HOME=/somewhere
 > scripts/new-session.sh …`.

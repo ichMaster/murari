@@ -31,5 +31,6 @@ mkdir -p "$SESSION/input" "$SESSION/output/artifacts"
 cp "$TEMPLATE" "$SESSION/input/TOPIC.md"
 
 echo "✔ created session: $SESSION"
-echo "  1) edit the topic:  $SESSION/input/TOPIC.md"
+echo "  1) write your topic (just the topic — the agent generates the hypotheses):"
+echo "       $SESSION/input/TOPIC.md"
 echo "  2) run it:          scripts/brainstorm.sh \"$SESSION\""
