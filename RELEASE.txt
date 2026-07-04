@@ -1,0 +1,8 @@
+Version 0.0.1 (2026-07-04)
+---------------------------
+- Install the brainstormer agent (.claude/agents/brainstormer.md): Opus 4.8, closed tool quartet (WebSearch, WebFetch, Read, Write).
+- Prove the diverge->verify->synthesize loop with a real by-hand run over a live-web topic; capture the run artifacts as fixtures.
+- Pin the two seams with tests (12 passing, offline): the agent JSON output contract and the workspace file formats + cross-run accumulation.
+- Record the verified invocation (run the canon as the main system prompt) and the JSON-fence handling in spec/architecture.md.
+- Add the by-hand helper (scripts/brainstorm.sh) and the v0.0 usage guide (docs/USAGE.md).
+- Ship the SDLC tooling: generate-issues/upload-issues/execute-issues/release-version skills.
