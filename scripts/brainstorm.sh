@@ -13,6 +13,7 @@ set -euo pipefail
 
 SESSION="${1:?usage: scripts/brainstorm.sh <session-folder> [max-turns]}"
 MAX_TURNS="${2:-15}"
+MODEL="${MURARI_MODEL:-claude-opus-4-8}"   # override with MURARI_MODEL=claude-fable-5 etc.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 AGENT="$REPO/.claude/agents/brainstormer.md"
 
@@ -32,12 +33,12 @@ LOG="$SESSION/output/artifacts/run-$N.log"
 
 PROMPT="Робоча тека сесії — поточна тека. Прочитай тему з input/TOPIC.md і наявний стан з output/LEDGER.md (якщо існує). Виконай один прогін за своїм циклом read→diverge→select→verify→synthesize→document→write; ужий WebSearch; не перевіряй закриті гіпотези повторно. ВСІ робочі файли (LEDGER.md, SOURCES.md, IDEAS.md, DOCUMENT.md) створюй і онови в теці output/ (не в корені й не в input/). Останнім повідомленням поверни лише JSON контракту."
 
-echo "▶ run #$N over $SESSION (max-turns=$MAX_TURNS) — a few minutes (live web) …"
+echo "▶ run #$N over $SESSION (model=$MODEL, max-turns=$MAX_TURNS) — a few minutes (live web) …"
 START="$(date +%s)"
 cd "$SESSION"
 claude -p "$PROMPT" \
   --append-system-prompt "$BODY" \
-  --model claude-opus-4-8 \
+  --model "$MODEL" \
   --allowedTools WebSearch,WebFetch,Read,Write \
   --disallowedTools Bash,Task \
   --max-turns "$MAX_TURNS" --output-format json > "$ENV_JSON"
