@@ -71,11 +71,15 @@ def test_ideas_has_born_from_search_with_basis():
 
 def test_document_is_state_not_log():
     text = (FIXTURES / "DOCUMENT.md").read_text(encoding="utf-8")
-    assert text.lstrip().startswith("# "), "DOCUMENT.md must have a title (coherent state)"
+    assert text.lstrip().startswith("# "), (
+        "DOCUMENT.md must have a title (coherent state)"
+    )
     # a rebuilt document, not an appended per-run log
     assert not re.search(r"Прогін\s*\d", text), "DOCUMENT.md must not read as a run log"
     # coherent, structured synthesis (state), not a stub
-    assert len(re.findall(r"^##\s", text, re.M)) >= 3, "DOCUMENT.md should be a structured synthesis"
+    assert len(re.findall(r"^##\s", text, re.M)) >= 3, (
+        "DOCUMENT.md should be a structured synthesis"
+    )
     assert len(text) > 800, "DOCUMENT.md should be a substantive document"
     # NOTE: source *URLs* live in SOURCES.md / LEDGER.md (asserted by their own tests);
     # DOCUMENT.md is readable prose carrying sourced figures, not inline URLs.
@@ -84,7 +88,9 @@ def test_document_is_state_not_log():
 def test_ledger_accumulates_across_runs():
     """Verdicts are sticky: run-2 keeps the closed verdicts from run-1 and does not
     shrink the ledger or re-open a closed hypothesis."""
-    h1, _ = parse_ledger((FIXTURES / "after-run-1" / "LEDGER.md").read_text(encoding="utf-8"))
+    h1, _ = parse_ledger(
+        (FIXTURES / "after-run-1" / "LEDGER.md").read_text(encoding="utf-8")
+    )
     h2, _ = parse_ledger((FIXTURES / "LEDGER.md").read_text(encoding="utf-8"))
     closed1 = sum(1 for s, _ in h1 if s in CLOSED)
     closed2 = sum(1 for s, _ in h2 if s in CLOSED)

@@ -97,7 +97,12 @@ def test_status_enum_enforced():
 
 
 def test_missing_key_fails():
-    bad = {"hypotheses": [], "fresh_ideas": [], "next_probes": [], "document_delta": "x"}
+    bad = {
+        "hypotheses": [],
+        "fresh_ideas": [],
+        "next_probes": [],
+        "document_delta": "x",
+    }
     with pytest.raises(AssertionError):
         validate_contract(bad)
 
