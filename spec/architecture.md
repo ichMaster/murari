@@ -57,8 +57,19 @@ below.
 
 ## Session workspace
 
-Directory `MURARI_HOME/sessions/<timestamp>-<topic-slug>/` [tentative] — a full timestamp (date +
-time), so repeated sessions on the same topic don't collide. Files:
+Directory `MURARI_HOME/brainstorm-sessions/session-<timestamp>[-slug]/` [tentative] — `MURARI_HOME`
+defaults to a **gitignored `.murari/`** in the project root; the full timestamp (date + time) keeps
+repeated sessions from colliding. Each session splits **input** from **output**:
+
+```
+session-<timestamp>[-slug]/
+  input/    TOPIC.md                                      <- user-written, read-only to the agent
+  output/   LEDGER.md  SOURCES.md  IDEAS.md  DOCUMENT.md  <- the agent's workspace + deliverable
+    artifacts/   run-N.json  run-N.log                    <- raw run envelopes + per-run stats
+```
+
+The whole session directory is the agent's sandbox (Read/Write confined to it; `input/` and `output/`
+are both inside, so no `../`). Files:
 
 | file | role | written by |
 |---|---|---|
@@ -179,7 +190,7 @@ Opus 4.8 is expensive — the caps are the primary cost ceiling of a session, no
 | `MURARI_RUNS` | agent runs per session | 6 |
 | `MURARI_MAX_TURNS` | `--max-turns` per run | 15 |
 | `MURARI_MODEL` | agent model | opus |
-| `MURARI_HOME` | base sessions directory | `~/murari` |
+| `MURARI_HOME` | base sessions directory | `<repo>/.murari` (gitignored) |
 
 ## Language
 
