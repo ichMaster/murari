@@ -117,9 +117,10 @@ refutation) · `partial` (holds under conditions, or sources disagree).
 The run's last message is the JSON contract. `hypotheses` contains only those this run touched;
 the full state lives in `LEDGER.md`.
 
-> **v0.0 finding.** The canon asks for bare JSON, but in the by-hand run the model wrapped it in a
-> ` ```json … ``` ` fence. The contract is therefore **"JSON, optionally fenced"**: the orchestrator's
-> parser strips an optional code fence before parsing. Pinned by the v0.0 contract test
+> **v0.0 finding.** The canon asks for bare JSON, but real runs emit it wrapped in a ` ```json … ``` `
+> fence and sometimes **after a prose preamble** (e.g. `"Файли оновлено. … Повертаю JSON."`). The
+> parser therefore **locates the fenced JSON block wherever it appears** (falling back to the outermost
+> `{…}`), rather than assuming the whole message is JSON. Pinned by the v0.0 contract test
 > (`tests/test_agent_output_contract.py`, `extract_contract`).
 
 ```json

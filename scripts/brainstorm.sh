@@ -23,7 +23,10 @@ SESSION="$(cd "$SESSION" && pwd)"          # absolutize
 mkdir -p "$SESSION/output/artifacts"
 
 BODY="$(sed '1,/^---$/d' "$AGENT")"        # canon body -> system prompt
-N=$(( $(ls "$SESSION"/output/artifacts/run-*.json 2>/dev/null | wc -l | tr -d ' ') + 1 ))
+shopt -s nullglob                          # empty glob -> empty (no `ls` failure under pipefail)
+_existing=("$SESSION"/output/artifacts/run-*.json)
+shopt -u nullglob
+N=$(( ${#_existing[@]} + 1 ))
 ENV_JSON="$SESSION/output/artifacts/run-$N.json"
 LOG="$SESSION/output/artifacts/run-$N.log"
 
@@ -51,10 +54,15 @@ import collections, json, re, sys
 envp, ledgerp, secs, n, maxt = sys.argv[1:6]
 d = json.load(open(envp))
 r = d.get("result", "").strip()
-if r.startswith("```"):
-    r = re.sub(r"^```[a-z]*\s*\n", "", r); r = re.sub(r"\n```$", "", r)
+# locate the JSON contract: fenced block anywhere (handles a prose preamble), else outermost {...}
+m = re.search(r"```(?:[a-zA-Z0-9]*)\s*\n(.*?)\n```", r, re.S)
+if m:
+    cand = m.group(1)
+else:
+    a, b = r.find("{"), r.rfind("}")
+    cand = r[a:b + 1] if a != -1 and b > a else r
 try:
-    contract = json.loads(r); ok = True
+    contract = json.loads(cand); ok = True
 except Exception:
     contract = {}; ok = False
 try:

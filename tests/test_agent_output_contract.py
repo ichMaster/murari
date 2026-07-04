@@ -33,14 +33,20 @@ TOP_KEYS = {"hypotheses", "fresh_ideas", "next_probes", "document_delta", "dry_r
 
 
 def extract_contract(result_text: str) -> dict:
-    """Parse the agent's final message into the contract dict, stripping an optional
-    ```json ... ``` fence first (the real run wraps its JSON in one)."""
+    """Parse the agent's final message into the contract dict. The model may emit the
+    JSON bare, wrapped in a ```json fence, and/or after a prose preamble (both seen in
+    real runs) — so locate the JSON block wherever it is rather than assuming the whole
+    message is JSON."""
     s = result_text.strip()
-    if s.startswith("```"):
-        s = re.sub(r"^```[a-zA-Z0-9]*\s*\n", "", s)
-        s = re.sub(r"\n```\s*$", "", s)
-        s = s.strip()
-    return json.loads(s)
+    # a fenced ```json ... ``` block anywhere (handles a prose preamble before it)
+    m = re.search(r"```(?:[a-zA-Z0-9]*)\s*\n(.*?)\n```", s, re.S)
+    if m:
+        return json.loads(m.group(1))
+    # otherwise the outermost {...} object
+    a, b = s.find("{"), s.rfind("}")
+    if a != -1 and b > a:
+        return json.loads(s[a : b + 1])
+    return json.loads(s)  # last resort — raises on junk
 
 
 def validate_contract(c: dict) -> None:
@@ -82,6 +88,14 @@ def test_extract_strips_optional_fence():
     bare = '{"hypotheses": [], "fresh_ideas": [], "next_probes": [], "document_delta": "x", "dry_run": false}'
     fenced = f"```json\n{bare}\n```"
     assert extract_contract(bare) == extract_contract(fenced)
+
+
+def test_extract_handles_prose_preamble():
+    # real runs sometimes prepend prose before the fenced JSON:
+    # "Файли оновлено. … Повертаю JSON.\n\n```json\n{…}\n```"
+    bare = '{"hypotheses": [], "fresh_ideas": [], "next_probes": [], "document_delta": "x", "dry_run": false}'
+    preamble = f"Файли оновлено. Повертаю JSON.\n\n```json\n{bare}\n```"
+    assert extract_contract(preamble) == extract_contract(bare)
 
 
 def test_status_enum_enforced():
