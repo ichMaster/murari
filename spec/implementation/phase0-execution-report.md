@@ -10,76 +10,51 @@
 
 | Status | Count |
 |--------|-------|
-| Completed | 2 |
+| Completed | 5 |
 | Failed | 0 |
 | Skipped | 0 |
-| Remaining | 3 |
+| Remaining | 0 |
 
-Automated execution stopped at MUR-003 **by design**: it is the deliberate real,
-paid, **by-hand** run (live model + live web, observed by a human for DoD-level
-quality). MUR-004 and MUR-005 are seeded from MUR-003's captured artifacts, so they
-are blocked until it completes.
+**Phase v0.0 DoD holds.** The brainstormer loop was proven by a real by-hand run, and the
+two seams (JSON output contract, workspace file formats) are pinned by tests that pass
+offline against the captured fixtures. `python3 -m pytest tests/` → **12 passed**.
 
 ## Issues
 
 | # | MUR ID | Title | Phase | Status | Commit | Files | Tests |
 |---|--------|-------|-------|--------|--------|-------|-------|
-| 1 | MUR-001 | Install the brainstormer agent | p0 | completed | eab46cb | 1 | n/a (file install) |
-| 2 | MUR-002 | Hand-written test session workspace (TOPIC.md) | p0 | completed | b3d1a1c | 1 | n/a (fixture) |
-| 3 | MUR-003 | By-hand run: fire the loop and capture artifacts | p0 | **handed to user** | — | — | by-hand run |
-| 4 | MUR-004 | Contract test: pin the agent JSON output schema | p0 | blocked (needs #3) | — | — | — |
-| 5 | MUR-005 | Workspace-format test: pin LEDGER structure + dry-run counter | p0 | blocked (needs #3) | — | — | — |
+| 1 | MUR-001 | Install the brainstormer agent | p0 | completed | eab46cb | 1 | n/a |
+| 2 | MUR-002 | Hand-written test session workspace (TOPIC.md) | p0 | completed | b3d1a1c | 1 | n/a |
+| 3 | MUR-003 | By-hand run: fire the loop and capture artifacts | p0 | completed | 0279f75 | 9 | by-hand run |
+| 4 | MUR-004 | Contract test: pin the agent JSON output schema | p0 | completed | 67b3d8a | 1 | 7 passed |
+| 5 | MUR-005 | Workspace-format test: pin LEDGER structure + dry-run counter | p0 | completed | b41295e | 1 | 5 passed |
 
 ## Detailed Results
 
-### MUR-001: Install the brainstormer agent
+### MUR-001: Install the brainstormer agent — completed (eab46cb)
+- `.claude/agents/brainstormer.md` installed byte-identical to `spec/brainstormer.md`; frontmatter = closed quartet + `model: opus`.
 
-**Status:** completed
-**Commit:** eab46cb (auto-closed #1 via "Closes #1")
-**Files changed:**
-- `.claude/agents/brainstormer.md` (added — byte-identical to `spec/brainstormer.md`)
+### MUR-002: Hand-written test session workspace — completed (b3d1a1c)
+- `tests/fixtures/session-2026-07-04-1400-teplovi-nasosy/TOPIC.md` (Ukrainian, 2 web-verifiable seeds); only TOPIC.md present.
 
-**Validation:**
-- [x] File matches `spec/brainstormer.md` (diff empty): pass
-- [x] Frontmatter = `tools: WebSearch, WebFetch, Read, Write`, `model: opus`; no Bash/Task: pass
-- [x] Well-formed YAML frontmatter at the canonical path: pass
-- [n/a] Live `claude -p` resolve: exercised by MUR-003 (no paid call spent here)
-- [x] Acceptance criteria: all pass
+### MUR-003: By-hand run — completed (0279f75)
+- Real paid run on `claude-opus-4-8` ×2; artifacts under `tests/fixtures/captured-run/` (+ NOTES.md).
+- **DoD:** valid contract; ledger accumulates 5→7 (confirmed 1→3, no closed re-checked); `born_from: search` ideas traceable; `DOCUMENT.md` coherent state.
+- **Findings → spec/architecture.md:** (1) `--agents brainstormer` doesn't run as the agent with Task disabled → `--append-system-prompt` with the canon body; (2) JSON is ```json-fenced → parser strips it; (3) `web_search_requests` counter unreliable in Claude Code.
 
----
+### MUR-004: Contract test — completed (67b3d8a)
+- `tests/test_agent_output_contract.py` — schema + status enum pinned; fence stripped; malformed rejected. **7 passed.**
 
-### MUR-002: Hand-written test session workspace (TOPIC.md)
+### MUR-005: Workspace-format test — completed (b41295e)
+- `tests/test_workspace_format.py` — LEDGER structure + dry-run counter + SOURCES/IDEAS/DOCUMENT + cross-run accumulation. **5 passed.**
 
-**Status:** completed
-**Commit:** b3d1a1c (auto-closed #2 via "Closes #2")
-**Files changed:**
-- `tests/fixtures/session-2026-07-04-1400-teplovi-nasosy/TOPIC.md` (added)
+## Validation notes
 
-**Validation:**
-- [x] TOPIC.md present, Ukrainian, verifiable topic + seeds: pass
-- [x] Only TOPIC.md in the dir (agent creates the rest on first run): pass
-- [x] Seeds carry a factual core the web can confirm/refute: pass
-- [x] Acceptance criteria: all pass
-
----
-
-### MUR-003: By-hand run — fire the loop and capture artifacts
-
-**Status:** handed to user (the deliberate real paid by-hand run)
-**Why not automated:** needs a live `claude -p` against the live web, run ≥2 times,
-with a human judging the DoD (ideas traceable to findings; document reads as coherent
-prose). This is the roadmap's one sanctioned paid run — see roadmap §v0.0.
-
-**What the user does:**
-1. Run the brainstormer over the MUR-002 workspace ≥2 times, saving each run's JSON.
-2. Confirm the DoD: valid JSON; `LEDGER.md` accumulates (closed hypotheses not re-checked);
-   ≥1 idea `born_from: search` traceable to a finding; `DOCUMENT.md` rebuilt, not a log.
-3. Commit the captured artifacts (one run's JSON + resulting LEDGER/SOURCES/IDEAS/DOCUMENT)
-   as fixtures, and record the exact working invocation. Then close #3.
+- **Tests:** `pytest tests/` → 12 passed (offline, no paid calls).
+- **ruff:** not installed on this machine — the lint check was skipped (to be wired with `pyproject.toml` in v0.1).
+- **No paid APIs in CI:** the only paid call was MUR-003's sanctioned by-hand run; the tests run purely on captured fixtures.
 
 ## Next Steps
 
-- **MUR-003 (#3)** — user runs the by-hand session and commits the captured fixtures.
-- **MUR-004 (#4)** — once #3's JSON fixture exists: write the JSON-schema contract test.
-- **MUR-005 (#5)** — once #3's workspace fixtures exist: write the LEDGER-format test.
-- After all three: v0.0 DoD holds → proceed to v0.1 (orchestration). **v0.0 ships no release.**
+- **No release** — v0.0 ships none by design (first tag is `0.1.0` after v0.1).
+- Proceed to **v0.1 (Orchestration)**: `/generate-issues 1` → `/upload-issues` → `/execute-issues p1::phase:1`. v0.1 wires `pyproject.toml` (ruff + pytest), the `AgentRunner` seam (encapsulating the verified `--append-system-prompt` invocation + fence-stripping parser), the session lifecycle, and budgets.
