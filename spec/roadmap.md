@@ -5,7 +5,7 @@
 
 One self-contained version — the **murari prototype** (the kiln burn) — built **core-outward** across six phases: **v0.0** agent alone (fire the core — prove the diverge→verify→synthesize loop by hand) → **v0.1** orchestration (a headless Python runner: the `claude -p` call, JSON parsing, the timestamped resumable session workspace, budgets) → **v0.2** chat layer (a Haiku loop whose only tool is `run_brainstorm`) → **v0.3** TUI (three Textual panels — chat / ledger / document — async and non-blocking) → **v0.4** sandbox hardening (the tool policy, workspace confinement, the one-level chain) → **v0.5** acceptance (the full Definition of done as a scenario). Phases inside the version are numbered `v0.B` (B = phase). Each phase lists a **Goal**, a short description, a **Tasks** list, a **Definition of Done (DoD)**, and the **Tests** that encode it. **The agent is built first and everything else is scaffolding around it** — risk and value are concentrated in the agent, so v0.0 fires the core before any orchestration exists. Complexity is added only by phase, never all at once.
 
-**Versioning (`A.B.C`).** `A` = roadmap version (v0→0), `B` = phase within it (`v0.1` → `0.1.0`), `C` = a post-phase fix on that phase. Roadmap phase `v0.B` → semver `0.B.0`; a fix after it bumps `C`. Releases are cut per phase. **v0.0 is proven by hand and ships no release** (there is no runnable app yet — only the agent definition and a manual run); the first tagged release is **0.1.0** (the orchestrator gives a runnable CLI). The graduation milestone — the agent proven and carried into Lumi — is **v1.0.0** (out of scope here). Never bump the version without explicit confirmation.
+**Versioning (`A.B.C`).** `A` = roadmap version (v0→0), `B` = phase within it (`v0.1` → `0.1.0`), `C` = a post-phase fix on that phase. Roadmap phase `v0.B` → semver `0.B.0`; a fix after it bumps `C`. Releases are cut per phase. **v0.0 is proven by hand and tagged `0.0.1`** — a milestone marking the agent definition plus the captured by-hand proof (there is no runnable app yet — only the agent and a manual run); the orchestrator's runnable CLI then ships as **0.1.0**. The graduation milestone — the agent proven and carried into Lumi — is **v1.0.0** (out of scope here). Never bump the version without explicit confirmation.
 
 **Status.** Specification stage. The spec (mission, architecture, agent canon) is complete groundwork; no code exists yet. Implementation language — Python (per the standard Python `.gitignore`). The `spec/` directory is currently outside git (only `.gitignore` and `LICENSE` are committed).
 
@@ -137,7 +137,7 @@ Once the agent is proven: it becomes a tool in Lumi's reply loop or a burst work
 | Haiku has exactly one tool — `run_brainstorm` | ✅ accepted |
 | Agent confined to the session directory; tools = WebSearch/WebFetch/Read/Write | ✅ accepted |
 | Exactly one level in the chain: no nested agents (Task disallowed) | ✅ accepted |
-| v0.0 ships no release; first tag is 0.1.0 (orchestrator); graduation = v1.0.0 | ✅ accepted (2026-07-04) |
+| v0.0 tagged `0.0.1` (proof milestone); orchestrator ships 0.1.0; graduation = v1.0.0 | ✅ revised (2026-07-04) |
 | Async run + non-blocking chat | 🔸 tentative |
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
 | Auto-trigger a run after an on-topic reply | 🔸 tentative |
