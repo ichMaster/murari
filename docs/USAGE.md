@@ -6,6 +6,34 @@
 > what it produces. That by-hand run is the prototype's core proof — that the loop
 > yields ideas traceable to live-web findings, not a retelling of the model's priors.
 
+## Quick start (TL;DR)
+
+Three steps — you only ever run **one command** (step 2):
+
+```bash
+# 1) make a folder with your topic
+mkdir -p ~/murari-run/session
+cat > ~/murari-run/session/TOPIC.md <<'EOF'
+# Тема
+<what you want to brainstorm, in a sentence or two>
+
+## Сіди
+- <a hunch or angle worth checking against the web>
+EOF
+
+# 2) run the agent (repeat this SAME line to dig deeper)
+cd /path/to/murari
+scripts/brainstorm.sh ~/murari-run/session
+
+# 3) read the result
+open ~/murari-run/session/DOCUMENT.md
+```
+
+**That's the whole flow.** Step 2 reads your `TOPIC.md`, searches the live web, and writes
+four files into the folder: `DOCUMENT.md` (the result), `LEDGER.md` (hypotheses + verdicts),
+`SOURCES.md` (links used), `IDEAS.md` (new ideas). Run step 2 again and it **builds on what's
+already there**. The rest of this page explains what happens under the hood.
+
 ## What you need
 
 - **Claude Code CLI** (`claude`) logged in to a plan that can run Opus (a Claude MAX
@@ -51,6 +79,10 @@ Leave `LEDGER.md` / `SOURCES.md` / `IDEAS.md` / `DOCUMENT.md` **out** — the ag
 them on its first run.
 
 ## Step 2 — Run the agent
+
+**The easy way:** `scripts/brainstorm.sh <session-folder>` — it runs exactly the command
+below (auto-numbering `run-N.json`), so you never assemble it by hand. The rest of this
+section is what that script does under the hood, in case you want to understand or tweak it.
 
 > **Important — how the agent is actually launched.**
 > The naive form `claude -p "…" --agents brainstormer` does **not** run *as* the
