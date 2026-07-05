@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "murari"
+dynamic = ["version"]
+description = "A brainstorming tool where a role-playing agent generates ideas traceable to live-web findings; the human is a participant, not a spectator."
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ichland" }]
+# No runtime deps yet — the orchestrator is stdlib-only.
+# `anthropic` (the Haiku chat layer) arrives in v0.2; `textual` (the TUI) in v0.3.
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    # Ruff pinned within a minor: deterministic format, stable `ruff format --check` in CI.
+    "ruff>=0.15,<0.16",
+]
+
+[project.scripts]
+murari = "murari.cli:main"
+
+[tool.setuptools]
+packages = ["murari"]
+
+# Version — single source of truth is the root VERSION file (read by murari.__version__
+# and bumped by /release-version).
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The agent is behind the AgentRunner seam and mocked — NO paid calls in tests.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# E/W (pycodestyle), F (pyflakes), I (isort), UP (pyupgrade), B (bugbear).
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+# Ruff default style (double quotes, spaces).

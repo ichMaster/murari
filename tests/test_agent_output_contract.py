@@ -85,7 +85,15 @@ def test_captured_run_validates(captured_contract):
 
 
 def test_extract_strips_optional_fence():
-    bare = '{"hypotheses": [], "fresh_ideas": [], "next_probes": [], "document_delta": "x", "dry_run": false}'
+    bare = json.dumps(
+        {
+            "hypotheses": [],
+            "fresh_ideas": [],
+            "next_probes": [],
+            "document_delta": "x",
+            "dry_run": False,
+        }
+    )
     fenced = f"```json\n{bare}\n```"
     assert extract_contract(bare) == extract_contract(fenced)
 
@@ -93,7 +101,15 @@ def test_extract_strips_optional_fence():
 def test_extract_handles_prose_preamble():
     # real runs sometimes prepend prose before the fenced JSON:
     # "Файли оновлено. … Повертаю JSON.\n\n```json\n{…}\n```"
-    bare = '{"hypotheses": [], "fresh_ideas": [], "next_probes": [], "document_delta": "x", "dry_run": false}'
+    bare = json.dumps(
+        {
+            "hypotheses": [],
+            "fresh_ideas": [],
+            "next_probes": [],
+            "document_delta": "x",
+            "dry_run": False,
+        }
+    )
     preamble = f"Файли оновлено. Повертаю JSON.\n\n```json\n{bare}\n```"
     assert extract_contract(preamble) == extract_contract(bare)
 
