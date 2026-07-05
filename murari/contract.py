@@ -90,13 +90,18 @@ def _validate_hypothesis(h: object, role: str) -> None:
 
 def _validate_idea(idea: object) -> None:
     _require(isinstance(idea, dict), f"idea must be an object: {idea!r}")
-    for k in ("text", "born_from", "basis"):
+    for k in ("text", "born_from"):
         _require(k in idea, f"idea missing key {k!r}: {idea!r}")
     _require(
         isinstance(idea["text"], str) and bool(idea["text"].strip()), "idea text must be non-empty"
     )
     _require(idea["born_from"] in BORN_FROM, f"bad born_from: {idea['born_from']!r}")
-    _require(isinstance(idea["basis"], str), "idea basis must be a string")
+    # basis is an optional free-text note (only meaningful for search-born ideas): allow
+    # missing or null, but if present it must be a string.
+    basis = idea.get("basis")
+    _require(
+        basis is None or isinstance(basis, str), f"idea basis must be a string or null: {basis!r}"
+    )
 
 
 def validate_contract(c: object) -> None:

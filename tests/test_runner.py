@@ -17,6 +17,7 @@ from murari.runner import (
     MockAgentRunner,
     RunnerError,
     RunRequest,
+    _exit_detail,
     _parse_envelope,
     allowed_tools,
     build_prompt,
@@ -102,6 +103,18 @@ def test_build_command(tmp_path):
     assert body.startswith("# Канон") and "name: brainstormer" not in body  # frontmatter stripped
 
 
+def test_subprocess_env_strips_api_key(tmp_path, monkeypatch):
+    # Opus must ride the MAX subscription, not the API key — the key must not reach `claude -p`
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-leak")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-should-not-leak")
+    monkeypatch.setenv("PATH", "/usr/bin")  # an ordinary var stays
+    runner = ClaudeCliRunner(_cfg(tmp_path), canon_path=_canon(tmp_path))
+    env = runner._subprocess_env()
+    assert "ANTHROPIC_API_KEY" not in env
+    assert "ANTHROPIC_AUTH_TOKEN" not in env
+    assert env["PATH"] == "/usr/bin"
+
+
 def test_build_command_analogy_grants_websearch(tmp_path):
     runner = ClaudeCliRunner(_cfg(tmp_path), canon_path=_canon(tmp_path))
     argv = runner.build_command(
@@ -145,6 +158,29 @@ def test_parse_envelope_invalid_contract_raises():
     bad["role"] = "planner"
     with pytest.raises(RunnerError):
         _parse_envelope(json.dumps({"result": json.dumps(bad)}))
+
+
+# --- nonzero-exit diagnostics ---
+
+
+class _Proc:
+    def __init__(self, stdout="", stderr=""):
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_exit_detail_prefers_stderr():
+    assert _exit_detail(_Proc(stderr="boom")) == "boom"
+
+
+def test_exit_detail_reads_error_from_stdout_envelope():
+    # Claude Code writes the real error to stdout while stderr is empty
+    out = json.dumps({"type": "result", "is_error": True, "result": "Overloaded"})
+    assert _exit_detail(_Proc(stdout=out)) == "Overloaded"
+
+
+def test_exit_detail_handles_empty_output():
+    assert "transient" in _exit_detail(_Proc())
 
 
 # --- mock runner ---

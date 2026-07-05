@@ -109,3 +109,27 @@ def test_bad_target_idea():
     c["target_idea"] = "the first one"
     with pytest.raises(ContractError):
         validate_contract(c)
+
+
+@pytest.mark.parametrize("basis", [None, "grew from finding X", ""])
+def test_idea_basis_is_optional_and_nullable(basis):
+    # basis is a soft note (meaningful only for search-born ideas); null / missing is fine
+    c = _load("generate")
+    c["fresh_ideas"][0]["basis"] = basis
+    validate_contract(c)  # must not raise
+    del c["fresh_ideas"][0]["basis"]
+    validate_contract(c)  # missing entirely is also fine
+
+
+def test_idea_basis_wrong_type_rejected():
+    c = _load("generate")
+    c["fresh_ideas"][0]["basis"] = 42  # a number is not a valid basis
+    with pytest.raises(ContractError):
+        validate_contract(c)
+
+
+def test_idea_still_requires_born_from():
+    c = _load("generate")
+    del c["fresh_ideas"][0]["born_from"]
+    with pytest.raises(ContractError):
+        validate_contract(c)

@@ -9,6 +9,7 @@ contracts for tests. The runner writes nothing to the workspace itself — the a
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from collections.abc import Callable
@@ -21,6 +22,11 @@ from murari.contract import ContractError, extract_contract, validate_contract
 
 DEFAULT_CANON = PROJECT_ROOT / ".claude" / "agents" / "brainstormer.md"
 RUN_TIMEOUT_S = 600  # a role move with live web can run several minutes
+
+# Opus must run on the MAX subscription (claude login), never an API key: these are stripped from
+# the `claude -p` subprocess env so Claude Code falls back to its subscription OAuth. The API key
+# belongs to the Haiku Messages-API layer (v0.2), not this subprocess (billing split, CLAUDE.md).
+_SUBSCRIPTION_ONLY_STRIP = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
 # Per-role tool policy (strategies.md). Bash/Task are always disallowed on top of this.
 _FULL = ("WebSearch", "WebFetch", "Read", "Write")
@@ -129,6 +135,24 @@ def strip_frontmatter(text: str) -> str:
     return _FRONTMATTER.sub("", text, count=1).lstrip("\n")
 
 
+def _exit_detail(proc: subprocess.CompletedProcess[str]) -> str:
+    """A legible reason for a nonzero `claude` exit. Claude Code often writes the real error to
+    stdout (as a `result` envelope or plain text) while stderr is empty — check both."""
+    err = proc.stderr.strip()
+    if err:
+        return err[:300]
+    out = (proc.stdout or "").strip()
+    if out:
+        try:
+            env = json.loads(out)
+            if isinstance(env, dict):
+                out = str(env.get("result") or env.get("error") or env)
+        except json.JSONDecodeError:
+            pass
+        return out[:300]
+    return "(no output on stdout/stderr — likely a transient API error; re-run)"
+
+
 def _parse_envelope(stdout: str) -> dict:
     """Extract and validate the v2 contract from a `claude -p` JSON envelope."""
     try:
@@ -159,6 +183,14 @@ class ClaudeCliRunner:
 
     def _canon_body(self) -> str:
         return strip_frontmatter(self.canon_path.read_text(encoding="utf-8"))
+
+    def _subprocess_env(self) -> dict[str, str]:
+        """The env for `claude -p`: the current environment minus any Anthropic API credentials,
+        so Opus runs on the logged-in MAX subscription rather than a (possibly invalid) key."""
+        env = dict(os.environ)
+        for key in _SUBSCRIPTION_ONLY_STRIP:
+            env.pop(key, None)
+        return env
 
     def build_command(self, req: RunRequest) -> list[str]:
         tools = allowed_tools(req.role, req.mutation_type)
@@ -191,11 +223,12 @@ class ClaudeCliRunner:
                 capture_output=True,
                 text=True,
                 timeout=RUN_TIMEOUT_S,
+                env=self._subprocess_env(),
             )
         except subprocess.TimeoutExpired as e:
             raise RunnerError(f"agent run timed out after {RUN_TIMEOUT_S}s") from e
         if proc.returncode != 0:
-            raise RunnerError(f"claude exited {proc.returncode}: {proc.stderr.strip()[:200]}")
+            raise RunnerError(f"claude exited {proc.returncode}: {_exit_detail(proc)}")
         contract = _parse_envelope(proc.stdout)
         return RunResult(role=req.role, contract=contract, raw_envelope=json.loads(proc.stdout))
 
