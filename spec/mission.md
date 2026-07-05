@@ -20,13 +20,17 @@ An idea sounds fresh, but it can't be traced.
 
 ## The idea
 
-Separate two roles and give each exactly the privileges it needs:
+Separate the duties and give each exactly the privileges it needs:
 
-- **Conversation** — a cheap chat brain (Haiku) that holds the dialogue and turns your replies into
-  seeds.
-- **Research** — a dedicated agent (Claude Code, Opus 4.8) running a
-  **diverge → select → verify → synthesize** loop: it generates hypotheses, strikes them against the
-  live web, and from what it finds gives birth to fresh ideas.
+- **Facilitation** — a cheap chat brain (Haiku, «Ведучий») that holds the dialogue, detects which
+  brainstorm role the user is playing, and turns replies into seeds and moves.
+- **Research** — a dedicated agent (Claude Code, Opus 4.8) playing **six brainstorm roles** —
+  Фантазер, Суддя, Дослідник, Опонент, Алхімік, Ткач — one move per run over the shared session
+  state, sequenced by **styles** (see [strategies.md](strategies.md)): it generates hypotheses,
+  strikes them against the live web, and from what it finds gives birth to fresh ideas.
+
+**The human is a participant, not a spectator:** the user may occupy any role, and the system
+plays the roles the user doesn't.
 
 The key edge of the loop is the **reverse** one: verify findings become the seed for the next
 diverge. That is where freshness comes from — an idea grows out of what search returned, not out of
@@ -56,6 +60,8 @@ agent never silently pulls in other sessions; continuation is always an explicit
   (`dry_run: true`). A verdict is never bent to fit expectations.
 - **Frugality.** The turn budget is a hard limit. Two hypotheses driven to a verdict beat five
   half-dug.
+- **No winner.** Opposition and debate exist to extract and record arguments; verdicts move only
+  on evidence, and nobody "wins" a session.
 
 ## Prototype goal
 
