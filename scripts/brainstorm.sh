@@ -72,10 +72,14 @@ try:
     sources = len(re.findall(r"джерело:\s*http", lt))
 except FileNotFoundError:
     counts, sources = {}, 0
+u = d.get("usage", {})
+cost = d.get("total_cost_usd") or sum(v.get("costUSD", 0) for v in d.get("modelUsage", {}).values())
 print(f"── run #{n}  |  {secs}s  |  max-turns={maxt}")
 print(f"   model: {', '.join(d.get('modelUsage', {}).keys()) or '?'}  |  turns: {d.get('num_turns')}  |  error: {d.get('is_error')}")
 print(f"   contract JSON: {'ok' if ok else 'MISSING'}  |  dry_run: {contract.get('dry_run')}")
 print(f"   ledger hypotheses: {counts or '{}'}  |  sources: {sources}")
+print(f"   tokens: out={u.get('output_tokens', 0)}  cache_read={u.get('cache_read_input_tokens', 0)}  "
+      f"cache_write={u.get('cache_creation_input_tokens', 0)}  |  cost≈${cost:.3f} (notional API price; $0 on MAX)")
 PY
 
 echo "✔ done → read $SESSION/output/DOCUMENT.md"
