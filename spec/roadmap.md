@@ -13,6 +13,12 @@ live web) → **v0.1** orchestration: style engine + role-parameterized runs →
 sandbox hardening (per-role tool policy, file ownership) → **v0.5** acceptance. Complexity is
 added only by phase; **the agent is the core and everything else is scaffolding around it**.
 
+**Roles by phase (short):** v0.0 proved one role (Суддя/`evaluate`); **all six roles land
+together in v0.1** (as modules of canon v2 — a style needs several roles at once); v0.2–v0.5
+wrap, they don't add roles (Ведучий selects, TUI shows, sandbox constrains, acceptance proves
+them live). Splitting the six modules into separate per-role canon files is deferred to
+post-v0.1. Full mapping: [strategies.md](strategies.md) § "Коли яка роль створюється".
+
 **Versioning (`A.B.C`).** `A` = roadmap version (v0→0), `B` = phase, `C` = post-phase fix.
 Phase `v0.B` → semver `0.B.0`. **v0.0 was released as `0.0.1`** (proof milestone: the agent +
 captured by-hand run; revised 2026-07-04); the orchestrator ships as **0.1.0**. Graduation —
