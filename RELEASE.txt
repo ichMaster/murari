@@ -1,3 +1,15 @@
+Version 0.1.0 (2026-07-05)
+---------------------------
+Phase v0.1 -- Orchestration (headless). The by-hand agent of v0.0 is now driven by a Python orchestrator with a headless CLI.
+- Project scaffolding (MUR-006): pyproject (ruff + pytest), the murari package, config and session budgets (MURARI_RUNS/MAX_TURNS/MODEL/HOME).
+- Agent canon v2 + contract v2 (MUR-007): role-parameterized canon installed at .claude/agents/brainstormer.md; the JSON output contract with the source gate and a fence/preamble-tolerant extractor.
+- LEDGER v2 read side (MUR-008): parser for H-ids, statuses, lineage (parents/mutation), the run journal, and the dry-run counter; per-move productivity check.
+- AgentRunner seam (MUR-009): the verified `claude -p` invocation (canon via --append-system-prompt, per-role tool narrowing, Bash/Task disallowed); MockAgentRunner for zero-cost tests.
+- Session lifecycle (MUR-010): create / open-and-continue / list, with snapshot-restore so a failed run leaves the workspace byte-identical.
+- Style engine + CLI (MUR-011): six styles (explore/debate/riff/investigate(default)/evolve/premortem) run move by move, seeded mutation/combine choices, budgets, the deviation rule after two dry moves, and the DOCUMENT ownership guard (only weave writes it). Headless CLI: new / open / run / list.
+- Runnable end-to-end: Opus runs on the MAX subscription (API key stripped from the subprocess), `python -m murari` entrypoint, legible nonzero-exit diagnostics, and a nullable contract `basis`.
+- 122 offline tests; CI mocks the agent, Haiku, and web search -- no paid APIs.
+
 Version 0.0.1 (2026-07-04)
 ---------------------------
 - Install the brainstormer agent (.claude/agents/brainstormer.md): Opus 4.8, closed tool quartet (WebSearch, WebFetch, Read, Write).
