@@ -14,6 +14,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from murari.config import PROJECT_ROOT, Config
 from murari.contract import ContractError, extract_contract, validate_contract
@@ -73,6 +74,7 @@ class RunRequest:
     session_dir: Path
     target_idea: str | None = None
     mutation_type: str | None = None
+    partner_idea: str | None = None  # the second parent for a `combine` mutation
     style_step: str | None = None
 
 
@@ -88,6 +90,13 @@ class RunResult:
         return bool(self.contract.get("dry_run"))
 
 
+class AgentRunner(Protocol):
+    """The seam the engine talks to: one move in, one validated `RunResult` out.
+    Implemented by `ClaudeCliRunner` (real) and `MockAgentRunner` (tests)."""
+
+    def run(self, req: RunRequest) -> RunResult: ...
+
+
 def allowed_tools(role: str | None, mutation_type: str | None = None) -> tuple[str, ...]:
     """The tool set granted for a role's move (the analogy exception gives the Alchemist web)."""
     if role in ("generate", "weave"):
@@ -101,6 +110,7 @@ def build_prompt(
     role: str | None,
     target_idea: str | None = None,
     mutation_type: str | None = None,
+    partner_idea: str | None = None,
     style_step: str | None = None,
 ) -> str:
     """The kickoff (user) message naming this run's move. The canon (system prompt) carries
@@ -108,6 +118,8 @@ def build_prompt(
     if role is None:
         return _FULL_CYCLE_PROMPT
     body = ROLE_PROMPTS[role].format(target=target_idea or "?", mtype=mutation_type or "?")
+    if role == "mutate" and mutation_type == "combine" and partner_idea:
+        body += f" Друга ідея для схрещення: {partner_idea}."
     return f"{body} {_JSON_REMINDER}"
 
 
@@ -153,7 +165,9 @@ class ClaudeCliRunner:
         return [
             "claude",
             "-p",
-            build_prompt(req.role, req.target_idea, req.mutation_type, req.style_step),
+            build_prompt(
+                req.role, req.target_idea, req.mutation_type, req.partner_idea, req.style_step
+            ),
             "--append-system-prompt",
             self._canon_body(),
             "--model",
