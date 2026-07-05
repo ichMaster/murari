@@ -1,0 +1,16 @@
+{
+  "role": "evaluate",
+  "target_idea": null,
+  "mutation_type": null,
+  "hypotheses": [
+    { "id": "H1", "text": "перевірне твердження", "status": "confirmed", "source": "https://example.com/a", "parents": [] },
+    { "id": "H2", "text": "хибне твердження", "status": "refuted", "source": "https://example.com/b", "parents": [] }
+  ],
+  "fresh_ideas": [
+    { "text": "ідея, що виросла зі знахідки A", "born_from": "search", "basis": "example.com/a — конкретна цифра" }
+  ],
+  "next_probes": [],
+  "next_role": "deepen",
+  "document_delta": null,
+  "dry_run": false
+}

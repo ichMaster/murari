@@ -1,0 +1,13 @@
+{
+  "role": "deepen",
+  "target_idea": "H1",
+  "mutation_type": null,
+  "hypotheses": [
+    { "id": "H1", "text": "поглиблено з деталями й межами", "status": "confirmed", "source": "https://example.com/deep", "parents": [] }
+  ],
+  "fresh_ideas": [],
+  "next_probes": ["ще одне джерело на межі застосовності"],
+  "next_role": "oppose",
+  "document_delta": null,
+  "dry_run": false
+}

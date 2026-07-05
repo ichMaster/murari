@@ -1,0 +1,15 @@
+{
+  "role": "mutate",
+  "target_idea": "H1",
+  "mutation_type": "invert",
+  "hypotheses": [
+    { "id": "H4", "text": "а що якщо припущення H1 навпаки", "status": "open", "source": null, "parents": ["H1"] }
+  ],
+  "fresh_ideas": [
+    { "text": "інвертована версія ідеї", "born_from": "mutation", "basis": "invert від H1" }
+  ],
+  "next_probes": [],
+  "next_role": "evaluate",
+  "document_delta": null,
+  "dry_run": false
+}

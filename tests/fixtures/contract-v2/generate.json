@@ -1,0 +1,17 @@
+{
+  "role": "generate",
+  "target_idea": null,
+  "mutation_type": null,
+  "hypotheses": [
+    { "id": "H1", "text": "перша ідея", "status": "open", "source": null, "parents": [] },
+    { "id": "H2", "text": "друга ідея", "status": "open", "source": null, "parents": [] },
+    { "id": "H3", "text": "третя, смілива ідея", "status": "open", "source": null, "parents": [] }
+  ],
+  "fresh_ideas": [
+    { "text": "несподіваний кут на тему", "born_from": "prior", "basis": "" }
+  ],
+  "next_probes": ["перевірити H1 і H2 об веб"],
+  "next_role": "evaluate",
+  "document_delta": null,
+  "dry_run": false
+}

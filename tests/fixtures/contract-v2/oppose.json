@@ -1,0 +1,13 @@
+{
+  "role": "oppose",
+  "target_idea": "H1",
+  "mutation_type": null,
+  "hypotheses": [
+    { "id": "H1", "text": "твердження, ослаблене контрдоказом", "status": "partial", "source": "https://example.com/counter", "parents": [] }
+  ],
+  "fresh_ideas": [],
+  "next_probes": [],
+  "next_role": "weave",
+  "document_delta": null,
+  "dry_run": false
+}

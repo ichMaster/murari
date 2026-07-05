@@ -1,0 +1,11 @@
+{
+  "role": "weave",
+  "target_idea": null,
+  "mutation_type": null,
+  "hypotheses": [],
+  "fresh_ideas": [],
+  "next_probes": [],
+  "next_role": null,
+  "document_delta": "перебудовано DOCUMENT.md: додано розділ про H1",
+  "dry_run": false
+}
