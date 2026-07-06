@@ -1,3 +1,12 @@
+Version 0.1.1 (2026-07-06)
+---------------------------
+Style behaviour refinements (found while running the CLI on real topics).
+- explore is now divergent (Ф->Ф->А->Ф->А->Т): breadth via generate+mutate, no evaluate/deepen, no verdict.
+- Style-shaped moves: wilder Фантазер in explore/riff; Дослідник gathers evidence both for and against (no verdict); Ткач catalogs (no winner) in explore/debate, state-of-analysis synthesis in the convergent styles.
+- Every DOCUMENT.md closes with a multi-axis ranking table of all hypotheses (★1-5: доказовість / оригінальність / популярність / пояснювальна сила) -- a scorecard, not a single winner.
+- run --target Hxx pins deepen/oppose/mutate to a chosen hypothesis; open lists the H-ids.
+- Product framing: murari is an environment for analysing ideas, not a machine that picks a winner -- verdicts prune the disproven, the human decides.
+
 Version 0.1.0 (2026-07-05)
 ---------------------------
 Phase v0.1 -- Orchestration (headless). The by-hand agent of v0.0 is now driven by a Python orchestrator with a headless CLI.
