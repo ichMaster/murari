@@ -15,20 +15,11 @@
 
 ### Install
 
-murari targets **Python ≥ 3.10** (developed on 3.14). Install into a virtualenv — modern Homebrew
-/ system Pythons are "externally managed" (PEP 668) and refuse a bare global `pip install`:
-
 ```bash
 cd /path/to/murari
-python3 -m venv .venv
-source .venv/bin/activate     # gives you the `murari` command
-pip install -e .
-#   …or don't install at all — from the repo root:  python -m murari <args>
+pip install -e .          # registers the `murari` command
+#   …or skip install and use:  python -m murari <args>
 ```
-
-> **Wrong-`pip` gotcha.** A bare `pip` often points at an older system Python (e.g. 3.9) and fails
-> with *"requires a different Python"*. Use the venv above, or `python3 -m pip …` with a ≥ 3.10
-> interpreter.
 
 You also need the **Claude Code CLI** (`claude`) logged in to a plan that can run Opus (a Claude
 **MAX** subscription is enough — the agent runs on your subscription, not the metered API), and
@@ -66,7 +57,67 @@ murari run .murari/brainstorm-sessions/session-*-heat --style evolve
 - `--moves N` — cap the run at `N` moves (never above `MURARI_RUNS`).
 - `--seed J` — the RNG seed for mutation types and `combine` partners; the **same seed replays the
   same choices** (randomness lives in the orchestrator, never the model). Default `0`.
+- `--target Hxx` — (`run` only) pin the single-hypothesis moves (deepen/oppose/mutate) to a chosen
+  hypothesis instead of the auto-picked strongest. Use `open` to see the H-ids. Must exist in the
+  ledger, else the run errors.
 - `--name S` — an optional slug for the session folder (`new` only; ASCII, else timestamp-only).
+
+### Examples per command
+
+**`new`** — start a fresh topic and run a style over it (the common entry point):
+
+```bash
+# create a session and run the default style (investigate)
+murari new "чому міста засипані шаром глини"
+
+# name the folder, pick a style, and fix the seed for a reproducible run
+murari new "теплові насоси для багатоквартирних будинків" --name heat --style explore --seed 7
+
+# cheap smoke: cap to 2 moves to sanity-check the pipeline before spending a full run
+murari new "тема" --moves 2
+```
+
+**`run`** — continue an *existing* session (open-and-continue; the ledger grows, never resets):
+
+```bash
+# add more thinking to a session with a different style
+murari run .murari/brainstorm-sessions/session-20260705-2312-heat --style evolve
+
+# a glob works when the slug is unique; same seed → same mutation/partner picks
+murari run .murari/brainstorm-sessions/session-*-heat --seed 7
+
+# debate a *specific* hypothesis (see its H-id via `murari open`) — no winner is declared
+murari run .murari/brainstorm-sessions/session-*-heat --style debate --target H3
+
+# stretch a session under a tighter budget
+MURARI_RUNS=3 murari run .murari/brainstorm-sessions/session-*-heat --style debate
+```
+
+**`open`** — peek at a session's state without running anything (free — no Opus call):
+
+```bash
+murari open .murari/brainstorm-sessions/session-20260705-2312-heat
+# session: /…/session-20260705-2312-heat
+# topic: теплові насоси для багатоквартирних будинків
+# ledger: 5 hypotheses, 3 survivors, dry-streak 0
+#   H1 [confirmed] теплові насоси окупаються за ~7 років …
+#   H2 [partial] шумність — головний бар'єр у щільній забудові …
+#   …
+# document: present
+```
+
+The listed H-ids are what you pass to `run --target Hxx`.
+
+**`list`** — find your sessions, newest first (the folder timestamp sorts chronologically):
+
+```bash
+murari list
+# session-20260705-2312-heat
+# session-20260704-2312-clay
+```
+
+A typical loop: `new` (start a topic) → `open` / `list` (check state) → `run <dir> --style evolve`
+(continue the same topic with another style) → read `output/DOCUMENT.md`.
 
 ### Styles
 
@@ -76,7 +127,7 @@ only move that writes `DOCUMENT.md`). Roles: Ф=Фантазер · С=Судд�
 
 | Key | Style | Essence | Sequence |
 |---|---|---|---|
-| `explore` | Фантазія вшир | many options, wide field | Ф → Ф → С → Ф → С → Т |
+| `explore` | Фантазія вшир | many options, wide field — **no verdict** | Ф → Ф → А → Ф → А → Т |
 | `debate` | Суперечка за один | thesis vs antithesis over `H` — **no winner** | Д → О → Д → О → С → Т |
 | `riff` | Фантазія вглиб одного | spin one option | Д → А → Ф → А → С → Т |
 | `investigate` | Розслідування **(default)** | hypotheses → verification (the v0.0 core) | Ф → С → Д → С → О → Т |
@@ -86,6 +137,16 @@ only move that writes `DOCUMENT.md`). Roles: Ф=Фантазер · С=Судд�
 Styles are templates, not rails: after **two dry moves in a row** the engine deviates — to the
 agent's suggested `next_role`, or a fallback (mutate the survivors, else generate) — and logs the
 deviation with its justification.
+
+The move behaviour is **style-shaped**: in the divergent / no-winner styles (`explore`, `debate`)
+the Ткач writes `DOCUMENT.md` as a **catalogue** — every idea with its «за/проти», no winner and
+no bottom-line verdict — while the convergent styles (`investigate`, `evolve`, `premortem`) get a
+state-of-thought synthesis. The Фантазер runs wilder in `explore`/`riff`, and the Дослідник
+gathers evidence **both for and against** an idea (without issuing a verdict).
+
+Every `DOCUMENT.md` (all styles) **ends with a ranking table** of all hypotheses, scored ★1–5 on
+four axes — **Доказовість · Оригінальність · Популярність · Пояснювальна сила** — a scorecard
+rather than a single winner (the axes deliberately disagree, so no one idea tops them all).
 
 ### What a run prints
 

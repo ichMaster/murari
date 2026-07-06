@@ -55,6 +55,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--moves", type=int, default=None, help="cap moves below MURARI_RUNS")
     run.add_argument("--seed", type=int, default=0, help="RNG seed for mutation/target choices")
+    run.add_argument(
+        "--target", default=None, metavar="Hxx", help="pin deepen/oppose/mutate to this hypothesis"
+    )
 
     sub.add_parser("list", help="list sessions, most recent first")
     return p
@@ -85,12 +88,13 @@ def _run_style(
     style: str,
     seed: int,
     moves: int | None,
+    target: str | None = None,
 ) -> int:
     """Run a style with snapshot/restore failure hygiene; print the result trace."""
     engine = Engine(config, runner)
     snap = snapshot_state(session)
     try:
-        res = engine.run_style(session, style, seed=seed, max_moves=moves)
+        res = engine.run_style(session, style, seed=seed, max_moves=moves, target=target)
     except (EngineError, RunnerError, LedgerError) as e:
         restore_state(session, snap)
         print(f"run failed ({type(e).__name__}): {e} — workspace restored", file=sys.stderr)
@@ -122,6 +126,9 @@ def cmd_open(args: argparse.Namespace, config: Config, runner: AgentRunner) -> i
             f"ledger: {len(led.hypotheses)} hypotheses, {len(led.survivors())} survivors, "
             f"dry-streak {led.dry_streak}"
         )
+        for h in led.hypotheses:  # list H-ids so a --target can be chosen
+            text = h.text if len(h.text) <= 70 else h.text[:69] + "…"
+            print(f"  {h.id} [{h.status}] {text}")
     print("document: " + ("present" if session.read_document() else "none"))
     return 0
 
@@ -132,7 +139,7 @@ def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> in
     except SessionError as e:
         print(f"cannot open session: {e}", file=sys.stderr)
         return 1
-    return _run_style(session, config, runner, args.style, args.seed, args.moves)
+    return _run_style(session, config, runner, args.style, args.seed, args.moves, args.target)
 
 
 def cmd_list(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:

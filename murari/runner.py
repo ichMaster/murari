@@ -47,8 +47,9 @@ ROLE_PROMPTS = {
         "(confirmed/refuted/partial). Немає джерела — лишай open."
     ),
     "deepen": (
-        "Роль Дослідник: глибоко копай ідею {target} — факти, цифри, умови, межі; кілька "
-        "пошуків саме про неї. Збагати запис і додай джерела."
+        "Роль Дослідник: глибоко копай ідею {target} — факти, цифри, умови, межі. Шукай докази "
+        "І ЗА, І ПРОТИ (обидві сторони), а не лише підтвердні; кілька пошуків саме про неї. "
+        "Збагати запис обома боками й додай джерела. Вердикт не виноси — це робота Судді."
     ),
     "oppose": (
         "Роль Опонент: знайди аргументи ПРОТИ ідеї {target} з джерелами. Мета — не перемогти, "
@@ -59,8 +60,10 @@ ROLE_PROMPTS = {
         "parents і born_from: mutation. Жодних вердиктів."
     ),
     "weave": (
-        "Роль Ткач: перебудуй DOCUMENT.md як зв'язний поточний стан думки (стан, не лог). "
-        "Вагомі тези — з джерелом; неперевірене познач як гіпотетичне."
+        "Роль Ткач: перебудуй DOCUMENT.md як зв'язний поточний СТАН АНАЛІЗУ (що підтверджено / "
+        "спростовано / відкрито) — стан, не лог. Вагомі тези — з джерелом; неперевірене познач як "
+        "гіпотетичне. НЕ крони одну «правильну» ідею й не давай єдиного вердикту-відповіді: це "
+        "середовище аналізу, фінальний вибір — за людиною."
     ),
 }
 
@@ -68,6 +71,41 @@ _FULL_CYCLE_PROMPT = (
     "Виконай повний цикл розслідування над TOPIC.md: read → diverge → select → verify → "
     "synthesize → document → write. Ужий WebSearch для перевірки. " + _JSON_REMINDER
 )
+
+_STYLE_STEP = re.compile(r"^([a-z]+)\[")
+
+# Style-shaped kickoffs (this is the kickoff layer — the engine builds no prompts). Divergent
+# styles keep ideas open and refuse a winner; the Фантазер runs wilder in them.
+_WILD_GENERATE_STYLES = frozenset({"explore", "riff"})
+_NO_WINNER_WEAVE_STYLES = frozenset({"explore", "debate"})
+
+_WILD_BOOST = (
+    " Стиль дивергентний: дай СПЕКУЛЯТИВНІ, дикі, навіть неможливі ідеї; не зводь за "
+    "замовчуванням до правдоподібного чи наукового спростування — цінність тут у розмаїтті."
+)
+
+_WEAVE_CATALOG = (
+    "Роль Ткач (режим каталогу): перебудуй DOCUMENT.md як КАТАЛОГ усіх ідей — кожну окремим "
+    "пунктом з коротким описом і що за/проти неї. НЕ обирай єдиного переможця й НЕ виноси "
+    "«головний висновок», яка одна ідея правильна: цінність тут — розмаїття."
+)
+
+# Every weave (both modes) closes DOCUMENT.md with a multi-axis scorecard — a ranking, not a
+# single winner (the axes disagree, so no one idea dominates all of them).
+_SCORECARD = (
+    " Наприкінці DOCUMENT.md додай ЗВЕДЕНУ ТАБЛИЦЮ-РАНЖУВАННЯ всіх гіпотез: рядок на гіпотезу "
+    "(H-id + короткий опис), колонки-осі ★1–5 — Доказовість, Оригінальність, Популярність, "
+    "Пояснювальна сила — плюс підсумковий ранг. Осі різні, тож переможець не один: таблиця "
+    "показує сильні й слабкі боки кожної ідеї, а не єдину «правильну»."
+)
+
+
+def _style_of(style_step: str | None) -> str | None:
+    """The style name from an engine style_step like 'explore[3]' (None if absent/unparseable)."""
+    if not style_step:
+        return None
+    m = _STYLE_STEP.match(style_step)
+    return m.group(1) if m else None
 
 
 class RunnerError(RuntimeError):
@@ -120,10 +158,18 @@ def build_prompt(
     style_step: str | None = None,
 ) -> str:
     """The kickoff (user) message naming this run's move. The canon (system prompt) carries
-    the full role definitions; this just says which move to do."""
+    the full role definitions; this just says which move to do — shaped by the style: the
+    Фантазер runs wilder in divergent styles and the Ткач catalogs (no winner) in them."""
     if role is None:
         return _FULL_CYCLE_PROMPT
-    body = ROLE_PROMPTS[role].format(target=target_idea or "?", mtype=mutation_type or "?")
+    style = _style_of(style_step)
+    if role == "weave":
+        base = _WEAVE_CATALOG if style in _NO_WINNER_WEAVE_STYLES else ROLE_PROMPTS["weave"]
+        body = base + _SCORECARD  # every weave closes with the multi-axis ranking table
+    else:
+        body = ROLE_PROMPTS[role].format(target=target_idea or "?", mtype=mutation_type or "?")
+    if role == "generate" and style in _WILD_GENERATE_STYLES:
+        body += _WILD_BOOST
     if role == "mutate" and mutation_type == "combine" and partner_idea:
         body += f" Друга ідея для схрещення: {partner_idea}."
     return f"{body} {_JSON_REMINDER}"

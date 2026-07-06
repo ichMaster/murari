@@ -67,6 +67,13 @@ def test_only_weave_appears_once_at_the_end():
         assert seq.count("weave") == 1, f"{name} weaves more than once"
 
 
+def test_explore_is_divergent_no_verdict_moves():
+    # explore surfaces many ideas; it must not evaluate/deepen (those converge / narrow)
+    seq = STYLES["explore"]
+    assert seq == ("generate", "generate", "mutate", "generate", "mutate", "weave")
+    assert "evaluate" not in seq and "deepen" not in seq
+
+
 # --- target / partner / mutation selection ---
 
 
@@ -237,6 +244,30 @@ def test_open_and_continue_grows_the_same_workspace(tmp_path, fake_agent_cls):
 
     assert len(reopened.read_ledger().hypotheses) > first  # ledger grew, not reset
     assert reopened.read_document() is not None  # document still present after continue
+
+
+def test_run_style_target_pins_target_moves(tmp_path, fake_agent_cls):
+    # seed the ledger with hypotheses, then pin debate's deepen/oppose to a chosen H
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    agent = fake_agent_cls()
+    mock = MockAgentRunner(_contracts(), on_run=agent)
+    Engine(cfg, mock).run_style(session, "explore", seed=0, max_moves=1)  # one generate → H1..H3
+
+    mock.calls.clear()
+    Engine(cfg, mock).run_style(session, "debate", seed=0, target="H2")
+    for c in mock.calls:
+        if c.role in ("deepen", "oppose", "mutate"):
+            assert c.target_idea == "H2"  # user target wins over auto-selection
+
+
+def test_run_style_unknown_target_raises(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    Engine(cfg, mock).run_style(session, "explore", seed=0, max_moves=1)  # H1..H3 exist
+    with pytest.raises(EngineError, match="unknown target"):
+        Engine(cfg, mock).run_style(session, "debate", target="H99")
 
 
 def test_run_style_unknown_style_raises(tmp_path, fake_agent_cls):

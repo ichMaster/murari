@@ -4,12 +4,13 @@
 
 ## In one sentence
 
-**murari** is a brainstorming tool where a dedicated agent doesn't recite back what the model already
-knows — it generates ideas traceable to findings verified against the live web, and weaves them into
-a working document.
+**murari** is an **environment for analyzing ideas — not a machine that picks a winner**. A dedicated
+agent doesn't recite what the model already knows: it surfaces many possibilities, verifies them
+against the live web, stress-tests each (за/проти), prunes what's disproven, and scores the survivors
+on several axes — the final choice stays with the human.
 
 The name (Sanskrit मुरारि — "enemy of Mura," the demon who weaves snares) sets the role: to cut the
-snares of unverified assumptions.
+snares of unverified assumptions — pruning what evidence disproves, never crowning one survivor.
 
 ## The problem
 
@@ -60,8 +61,11 @@ agent never silently pulls in other sessions; continuation is always an explicit
   (`dry_run: true`). A verdict is never bent to fit expectations.
 - **Frugality.** The turn budget is a hard limit. Two hypotheses driven to a verdict beat five
   half-dug.
-- **No winner.** Opposition and debate exist to extract and record arguments; verdicts move only
-  on evidence, and nobody "wins" a session.
+- **No winner — an environment for analysis.** murari analyzes ideas; it does not crown one.
+  Opposition and debate extract and record arguments; verdicts (`confirmed`/`refuted`) prune what
+  evidence disproves — that is analysis, not victory. The final `DOCUMENT.md` scores each idea on
+  several axes (доказовість / оригінальність / популярність / пояснювальна сила) and ranks them, but
+  declares no single "correct" answer — nobody "wins" a session, and the decision stays with the human.
 
 ## Prototype goal
 

@@ -74,7 +74,7 @@ A style is a named sequence of moves — the session scenario. Ф=Фантазе
 
 | Key | Style | Essence | Example sequence (6 moves) |
 |---|---|---|---|
-| `explore` | Фантазія вшир | many options, wide field | Ф → Ф → С → Ф → С → Т |
+| `explore` | Фантазія вшир | many options, wide field; **no verdict** | Ф → Ф → А → Ф → А → Т |
 | `debate` | Суперечка за один | thesis vs antithesis over `H`; **no winner** | Д(H) → О(H) → Д(H) → О(H) → С(H) → Т |
 | `riff` | Фантазія вглиб одного | spin one option | Д(H) → А(H) → Ф(around H) → А(H) → С → Т |
 | `investigate` | Розслідування **(default)** | hypotheses → verification (v0.0 core) | Ф → С → Д → С → О → Т |
@@ -83,6 +83,19 @@ A style is a named sequence of moves — the session scenario. Ф=Фантазе
 
 Styles are templates, not rails: Ведучий/scheduler may deviate with justification based on
 LEDGER state. Style can change mid-session.
+
+The **weave** move is style-shaped (kickoff layer, `runner.build_prompt`): in the divergent /
+no-winner styles (`explore`, `debate`) Ткач writes DOCUMENT.md as a **catalog** — every idea as
+its own entry with «за/проти», no winner and no bottom-line verdict; in the convergent styles
+(`investigate`, `evolve`, `premortem`) it writes the usual state-of-thought synthesis. In **both**
+modes DOCUMENT.md **closes with a multi-axis ranking table** of every hypothesis — ★1–5 on
+Доказовість / Оригінальність / Популярність / Пояснювальна сила — a scorecard, not a single winner
+(the axes disagree). The **Фантазер** likewise runs wilder (speculative, no default debunking) in
+`explore`/`riff`, and **Дослідник** gathers evidence both for and against an idea without a verdict.
+
+Target selection for the single-hypothesis moves (deepen/oppose/mutate) is deterministic — the
+strongest survivor — but a user may **pin** it with `run --target Hxx` (validated against the
+ledger) to research a specific hypothesis; `open` lists the H-ids to choose from.
 
 ## Session workspace
 

@@ -19,7 +19,9 @@ from murari.runner import AgentRunner, RunRequest
 
 STYLES: dict[str, tuple[str, ...]] = {
     # Ф=generate С=evaluate Д=deepen О=oppose А=mutate Т=weave
-    "explore": ("generate", "generate", "evaluate", "generate", "evaluate", "weave"),
+    # explore is divergent: no evaluate/deepen (those converge or narrow to one idea) — breadth
+    # via generate+mutate, then a no-winner catalog weave. See runner._NO_WINNER_WEAVE_STYLES.
+    "explore": ("generate", "generate", "mutate", "generate", "mutate", "weave"),
     "debate": ("deepen", "oppose", "deepen", "oppose", "evaluate", "weave"),
     "riff": ("deepen", "mutate", "generate", "mutate", "evaluate", "weave"),
     "investigate": ("generate", "evaluate", "deepen", "evaluate", "oppose", "weave"),
@@ -125,10 +127,20 @@ class Engine:
         self.runner = runner
 
     def run_style(
-        self, session, style: str = DEFAULT_STYLE, *, seed: int = 0, max_moves: int | None = None
+        self,
+        session,
+        style: str = DEFAULT_STYLE,
+        *,
+        seed: int = 0,
+        max_moves: int | None = None,
+        target: str | None = None,
     ) -> EngineResult:
         if style not in STYLES:
             raise EngineError(f"unknown style: {style!r}")
+        if target is not None:
+            ids = (session.read_ledger() or _empty()).ids()
+            if target not in ids:
+                raise EngineError(f"unknown target {target!r}; available: {sorted(ids) or 'none'}")
         rng = random.Random(seed)
         moves = STYLES[style]
         budget = min(self.config.runs, max_moves if max_moves is not None else self.config.runs)
@@ -145,9 +157,14 @@ class Engine:
 
             before = session.read_ledger() or _empty()
             move, justification = next_move(planned, dry_streak, suggested, before)
-            target = select_target(move, before)
+            # a user-pinned --target overrides auto-selection for the target-moves (deepen/oppose/
+            # mutate) — "research this hypothesis"; otherwise the strongest survivor is chosen.
+            if target is not None and move in _TARGET_MOVES:
+                move_target = target
+            else:
+                move_target = select_target(move, before)
             mutation_type = pick_mutation(rng) if move == "mutate" else None
-            partner = select_partner(before, target) if mutation_type == "combine" else None
+            partner = select_partner(before, move_target) if mutation_type == "combine" else None
 
             doc_before = _doc_bytes(session.document_file)
             sources_before = _count_sources(session.output_dir)
@@ -156,7 +173,7 @@ class Engine:
                 RunRequest(
                     role=move,
                     session_dir=session.path,
-                    target_idea=target,
+                    target_idea=move_target,
                     mutation_type=mutation_type,
                     partner_idea=partner,
                     style_step=f"{style}[{i}]",
@@ -178,7 +195,7 @@ class Engine:
             dry_streak = dry_streak + 1 if dry else 0
             suggested = result.contract.get("next_role")
             logs.append(
-                MoveLog(i, move, target, mutation_type, dry, _BUDGET_TIER[move], justification)
+                MoveLog(i, move, move_target, mutation_type, dry, _BUDGET_TIER[move], justification)
             )
 
         self._write_engine_log(session, style, seed, logs)

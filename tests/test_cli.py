@@ -90,6 +90,47 @@ def test_open_prints_state(tmp_path, capsys):
     assert "заголовок теми" in out and "ledger: (none yet)" in out
 
 
+def test_open_lists_hypotheses(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # generate → H1..H3
+    capsys.readouterr()  # clear the run output
+
+    rc = main(["open", str(session.path)], runner=MockAgentRunner({}), config=cfg)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "H1 [" in out and "H2 [" in out and "H3 [" in out  # ids listed for --target
+
+
+def test_run_target_reaches_engine(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # H1..H3
+    mock.calls.clear()
+
+    rc = main(
+        ["run", str(session.path), "--style", "debate", "--target", "H2"], runner=mock, config=cfg
+    )
+    assert rc == 0
+    assert any(c.target_idea == "H2" for c in mock.calls if c.role in ("deepen", "oppose"))
+
+
+def test_run_unknown_target_returns_1(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # H1..H3
+    capsys.readouterr()
+
+    rc = main(
+        ["run", str(session.path), "--style", "debate", "--target", "H99"], runner=mock, config=cfg
+    )
+    assert rc == 1
+    assert "unknown target" in capsys.readouterr().err
+
+
 def test_open_nonexistent_returns_1(tmp_path, capsys):
     cfg = _cfg(tmp_path)
     rc = main(["open", str(tmp_path / "nope")], runner=MockAgentRunner({}), config=cfg)

@@ -87,6 +87,54 @@ def test_strip_frontmatter():
     assert body.startswith("# Канон") and "name: x" not in body
 
 
+def test_deepen_seeks_both_sides():
+    p = build_prompt("deepen", target_idea="H1")
+    assert "ЗА" in p and "ПРОТИ" in p  # both-sides evidence, not one-directional
+
+
+@pytest.mark.parametrize("style_step", ["explore[5]", "debate[5]"])
+def test_weave_is_catalog_no_winner_in_divergent_styles(style_step):
+    p = build_prompt("weave", style_step=style_step)
+    assert "каталог" in p and "переможц" in p  # no winner, catalog all ideas
+
+
+@pytest.mark.parametrize("style_step", ["investigate[5]", "evolve[5]", None])
+def test_weave_converges_in_other_styles(style_step):
+    p = build_prompt("weave", style_step=style_step)
+    assert "каталог" not in p and "DOCUMENT.md" in p  # the convergent weave
+
+
+@pytest.mark.parametrize("style_step", ["investigate[5]", "explore[5]", "debate[5]", None])
+def test_weave_never_crowns_a_winner(style_step):
+    # product principle: analyse ideas, don't pick a winner — the scorecard clause is universal
+    assert "переможець не один" in build_prompt("weave", style_step=style_step)
+
+
+@pytest.mark.parametrize("style_step", ["investigate[5]", None])
+def test_convergent_weave_does_not_crown_one_answer(style_step):
+    # the softened convergent weave: state of analysis, no single "correct" idea
+    assert "не крони" in build_prompt("weave", style_step=style_step).lower()
+
+
+def test_generate_is_wild_in_divergent_styles():
+    assert "СПЕКУЛЯТИВНІ" in build_prompt("generate", style_step="explore[0]")
+    assert "СПЕКУЛЯТИВНІ" in build_prompt("generate", style_step="riff[2]")
+
+
+@pytest.mark.parametrize("style_step", ["explore[5]", "debate[5]", "investigate[5]", None])
+def test_weave_always_appends_scorecard(style_step):
+    # every weave closes with the multi-axis ranking table, in all styles
+    p = build_prompt("weave", style_step=style_step)
+    assert "ТАБЛИЦЮ-РАНЖУВАННЯ" in p
+    for axis in ("Доказовість", "Оригінальність", "Популярність", "Пояснювальна сила"):
+        assert axis in p
+
+
+@pytest.mark.parametrize("style_step", ["investigate[0]", None])
+def test_generate_is_plain_in_convergent_styles(style_step):
+    assert "СПЕКУЛЯТИВНІ" not in build_prompt("generate", style_step=style_step)
+
+
 # --- command construction (no subprocess) ---
 
 
