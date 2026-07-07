@@ -21,7 +21,6 @@ from murari.config import PROJECT_ROOT, Config
 from murari.contract import ContractError, extract_contract, validate_contract
 
 DEFAULT_CANON = PROJECT_ROOT / ".claude" / "agents" / "brainstormer.md"
-RUN_TIMEOUT_S = 600  # a role move with live web can run several minutes
 
 # Opus must run on the MAX subscription (claude login), never an API key: these are stripped from
 # the `claude -p` subprocess env so Claude Code falls back to its subscription OAuth. The API key
@@ -44,16 +43,23 @@ ROLE_PROMPTS = {
     ),
     "evaluate": (
         "Роль Суддя: вибери з open-гіпотез перевірні й дай кожній вердикт із джерелом "
-        "(confirmed/refuted/partial). Немає джерела — лишай open."
+        "(confirmed/refuted/partial); немає джерела — лишай open. Далі онови секцію "
+        "`## Ранжування` в LEDGER: кожній оціненій гіпотезі — ★1–5 по осях доказовість/"
+        "оригінальність/популярність/пояснювальна сила, рядок «- Hn — доказ:N ориг:N попул:N "
+        "поясн:N — джерела: так»."
     ),
     "deepen": (
         "Роль Дослідник: глибоко копай ідею {target} — факти, цифри, умови, межі. Шукай докази "
-        "І ЗА, І ПРОТИ (обидві сторони), а не лише підтвердні; кілька пошуків саме про неї. "
-        "Збагати запис обома боками й додай джерела. Вердикт не виноси — це робота Судді."
+        "І ЗА, І ПРОТИ (обидві сторони), а не лише підтвердні; кілька пошуків саме про неї. Кожну "
+        "знахідку запиши ОКРЕМИМ пунктом у секцію `## Аргументи` LEDGER під `### {target}`, "
+        "рядок «- ЗА: … — джерело: url» або «- ПРОТИ: … — джерело: url»; у рядок гіпотези НЕ "
+        "втрамбовуй. Додай джерела в SOURCES. Вердикт не виноси — це робота Судді."
     ),
     "oppose": (
-        "Роль Опонент: знайди аргументи ПРОТИ ідеї {target} з джерелами. Мета — не перемогти, "
-        "а видобути й записати аргументи. Статус зсувай лише доказами."
+        "Роль Опонент: знайди аргументи ПРОТИ ідеї {target} з джерелами. Мета — не перемогти, а "
+        "видобути й записати. Кожен контраргумент — ОКРЕМИМ пунктом у `## Аргументи` під "
+        "`### {target}`: «- ПРОТИ: … — джерело: url». Статус зсувай лише доказами; познач "
+        "«випробувано: N»."
     ),
     "mutate": (
         "Роль Алхімік: застосуй мутацію типу {mtype} до ідеї {target}; нащадок — status open з "
@@ -78,25 +84,53 @@ _STYLE_STEP = re.compile(r"^([a-z]+)\[")
 # styles keep ideas open and refuse a winner; the Фантазер runs wilder in them.
 _WILD_GENERATE_STYLES = frozenset({"explore", "riff"})
 _NO_WINNER_WEAVE_STYLES = frozenset({"explore", "debate"})
+# Styles where the Суддя scores WITHOUT sources (quick estimate, no verdict) — explore.
+_SCORE_ONLY_STYLES = frozenset({"explore"})
 
 _WILD_BOOST = (
     " Стиль дивергентний: дай СПЕКУЛЯТИВНІ, дикі, навіть неможливі ідеї; не зводь за "
     "замовчуванням до правдоподібного чи наукового спростування — цінність тут у розмаїтті."
 )
 
-_WEAVE_CATALOG = (
-    "Роль Ткач (режим каталогу): перебудуй DOCUMENT.md як КАТАЛОГ усіх ідей — кожну окремим "
-    "пунктом з коротким описом і що за/проти неї. НЕ обирай єдиного переможця й НЕ виноси "
-    "«головний висновок», яка одна ідея правильна: цінність тут — розмаїття."
+# The Суддя in a score-only style: rate every hypothesis on the axes, no verdicts, no web.
+_EVALUATE_SCORE_ONLY = (
+    "Роль Суддя (режим оцінки, без джерел): НЕ вішай вердиктів і НЕ шукай у вебі — лише швидко "
+    "оціни КОЖНУ гіпотезу й онови секцію `## Ранжування` в LEDGER: ★1–5 по осях доказовість/"
+    "оригінальність/популярність/пояснювальна сила, рядок «- Hn — доказ:N ориг:N попул:N поясн:N — "
+    "джерела: ні». Статуси лишаються open."
 )
 
-# Every weave (both modes) closes DOCUMENT.md with a multi-axis scorecard — a ranking, not a
-# single winner (the axes disagree, so no one idea dominates all of them).
+_WEAVE_CATALOG = (
+    "Роль Ткач (режим каталогу): перебудуй DOCUMENT.md як КАТАЛОГ усіх ідей — кожну окремим "
+    "пунктом з коротким описом і що за/проти неї (бери «за/проти» з секції `## Аргументи` LEDGER). "
+    "НЕ обирай єдиного переможця й НЕ виноси «головний висновок», яка ідея правильна: цінність тут "
+    "— розмаїття."
+)
+
+# DOCUMENT.md is written for a reader NEW to the topic — explanatory prose, not a dense expert
+# digest. Applied to every weave (both modes).
+_WEAVE_STYLE = (
+    " Пиши DOCUMENT.md для читача, НОВОГО в темі: пояснюй терміни при першій згадці, повними "
+    "звʼязними реченнями, веди думку крок за кроком простою мовою. Уникай телеграфного стилю — "
+    "без нагромадження тире й стиснутих фрагментів; краще довше й зрозуміло, ніж щільно."
+)
+
+# Rebuilding must not LOSE knowledge: the за/проти is durable LEDGER state, render it in full.
+_WEAVE_PRESERVE = (
+    " Перебудова НЕ означає втрату знання: жодну гіпотезу з LEDGER не викидай із документа, а "
+    "«за/проти» кожної рендери з секції `## Аргументи` LEDGER ПОВНІСТЮ (вона накопичується між "
+    "прогонами — нічого звідти не губи й не вихолощуй, навіть для ідей, по яких цей прогін нічого "
+    "не додав)."
+)
+
+# Every weave (both modes) closes DOCUMENT.md with the multi-axis scorecard — RENDERED from the
+# `## Ранжування` state the Суддя wrote, a ranking not a single winner (the axes disagree).
 _SCORECARD = (
-    " Наприкінці DOCUMENT.md додай ЗВЕДЕНУ ТАБЛИЦЮ-РАНЖУВАННЯ всіх гіпотез: рядок на гіпотезу "
-    "(H-id + короткий опис), колонки-осі ★1–5 — Доказовість, Оригінальність, Популярність, "
-    "Пояснювальна сила — плюс підсумковий ранг. Осі різні, тож переможець не один: таблиця "
-    "показує сильні й слабкі боки кожної ідеї, а не єдину «правильну»."
+    " Наприкінці DOCUMENT.md виведи ЗВЕДЕНУ ТАБЛИЦЮ-РАНЖУВАННЯ, РЕНДЕРЯЧИ оцінки з секції "
+    "`## Ранжування` LEDGER (не вигадуй нових): рядок на гіпотезу (H-id + короткий опис), ★1–5 по "
+    "осях Доказовість/Оригінальність/Популярність/Пояснювальна сила + позначка, чи оцінка з "
+    "джерелами. Осі різні, тож переможець не один — таблиця показує сильні й слабкі боки кожної "
+    "ідеї, а не єдину «правильну»."
 )
 
 
@@ -123,11 +157,49 @@ class RunRequest:
 
 
 @dataclass(frozen=True)
+class Usage:
+    """Token counts + cost of one agent move, read from the `claude -p` envelope."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cost_usd: float = 0.0
+
+    @property
+    def billed_input(self) -> int:
+        """All input tokens the run touched (fresh + cache read/creation)."""
+        return self.input_tokens + self.cache_read_tokens + self.cache_creation_tokens
+
+    def __add__(self, other: Usage) -> Usage:
+        return Usage(
+            input_tokens=self.input_tokens + other.input_tokens,
+            output_tokens=self.output_tokens + other.output_tokens,
+            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            cache_creation_tokens=self.cache_creation_tokens + other.cache_creation_tokens,
+            cost_usd=self.cost_usd + other.cost_usd,
+        )
+
+
+def _extract_usage(env: dict) -> Usage:
+    """Pull token counts and cost from a `claude -p` result envelope (missing fields → 0)."""
+    u = env.get("usage") or {}
+    return Usage(
+        input_tokens=int(u.get("input_tokens") or 0),
+        output_tokens=int(u.get("output_tokens") or 0),
+        cache_read_tokens=int(u.get("cache_read_input_tokens") or 0),
+        cache_creation_tokens=int(u.get("cache_creation_input_tokens") or 0),
+        cost_usd=float(env.get("total_cost_usd") or 0.0),
+    )
+
+
+@dataclass(frozen=True)
 class RunResult:
     role: str | None
     contract: dict
     raw_envelope: dict = field(repr=False, default_factory=dict)
     duration_s: float | None = None
+    usage: Usage = field(default_factory=Usage)
 
     @property
     def dry_run(self) -> bool:
@@ -165,7 +237,10 @@ def build_prompt(
     style = _style_of(style_step)
     if role == "weave":
         base = _WEAVE_CATALOG if style in _NO_WINNER_WEAVE_STYLES else ROLE_PROMPTS["weave"]
-        body = base + _SCORECARD  # every weave closes with the multi-axis ranking table
+        # explanatory prose + preserve untouched ideas' text + the ranking table
+        body = base + _WEAVE_STYLE + _WEAVE_PRESERVE + _SCORECARD
+    elif role == "evaluate" and style in _SCORE_ONLY_STYLES:
+        body = _EVALUATE_SCORE_ONLY  # score, don't judge — no sources, no verdicts
     else:
         body = ROLE_PROMPTS[role].format(target=target_idea or "?", mtype=mutation_type or "?")
     if role == "generate" and style in _WILD_GENERATE_STYLES:
@@ -268,15 +343,18 @@ class ClaudeCliRunner:
                 cwd=str(req.session_dir),
                 capture_output=True,
                 text=True,
-                timeout=RUN_TIMEOUT_S,
+                timeout=self.config.run_timeout_s,
                 env=self._subprocess_env(),
             )
         except subprocess.TimeoutExpired as e:
-            raise RunnerError(f"agent run timed out after {RUN_TIMEOUT_S}s") from e
+            raise RunnerError(f"agent run timed out after {self.config.run_timeout_s}s") from e
         if proc.returncode != 0:
             raise RunnerError(f"claude exited {proc.returncode}: {_exit_detail(proc)}")
         contract = _parse_envelope(proc.stdout)
-        return RunResult(role=req.role, contract=contract, raw_envelope=json.loads(proc.stdout))
+        env = json.loads(proc.stdout)  # valid — _parse_envelope already succeeded
+        return RunResult(
+            role=req.role, contract=contract, raw_envelope=env, usage=_extract_usage(env)
+        )
 
 
 class MockAgentRunner:
@@ -288,9 +366,14 @@ class MockAgentRunner:
         contracts: dict[str | None, dict],
         *,
         on_run: Callable[[RunRequest], None] | None = None,
+        usage: Usage | None = None,
     ) -> None:
         self._contracts = contracts
         self._on_run = on_run
+        # a small fixed usage per move so token/cost aggregation is exercised without paid calls
+        self._usage = (
+            usage if usage is not None else Usage(input_tokens=100, output_tokens=20, cost_usd=0.01)
+        )
         self.calls: list[RunRequest] = []
 
     def run(self, req: RunRequest) -> RunResult:
@@ -306,4 +389,10 @@ class MockAgentRunner:
             "is_error": False,
             "result": json.dumps(contract, ensure_ascii=False),
         }
-        return RunResult(role=req.role, contract=contract, raw_envelope=envelope, duration_s=0.0)
+        return RunResult(
+            role=req.role,
+            contract=contract,
+            raw_envelope=envelope,
+            duration_s=0.0,
+            usage=self._usage,
+        )

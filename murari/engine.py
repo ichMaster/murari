@@ -9,19 +9,23 @@ when the session goes dry. Deterministic Python — not a model decision.
 from __future__ import annotations
 
 import random
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from murari.config import Config
 from murari.contract import ROLES
-from murari.ledger import Ledger, is_dry, parse_ledger
-from murari.runner import AgentRunner, RunRequest
+from murari.ledger import Ledger, LedgerError, is_dry, parse_ledger
+from murari.runner import AgentRunner, RunnerError, RunRequest, Usage
+from murari.session import restore_state, snapshot_state
 
 STYLES: dict[str, tuple[str, ...]] = {
     # Ф=generate С=evaluate Д=deepen О=oppose А=mutate Т=weave
-    # explore is divergent: no evaluate/deepen (those converge or narrow to one idea) — breadth
-    # via generate+mutate, then a no-winner catalog weave. See runner._NO_WINNER_WEAVE_STYLES.
-    "explore": ("generate", "generate", "mutate", "generate", "mutate", "weave"),
+    # explore is divergent: breadth via generate+mutate, one score-only evaluate (the Суддя rates
+    # every idea WITHOUT sources → `## Ранжування`), then a no-winner catalog weave that renders
+    # the scores. No deepen (it narrows to one idea). See runner._SCORE_ONLY_STYLES.
+    "explore": ("generate", "generate", "mutate", "generate", "evaluate", "weave"),
     "debate": ("deepen", "oppose", "deepen", "oppose", "evaluate", "weave"),
     "riff": ("deepen", "mutate", "generate", "mutate", "evaluate", "weave"),
     "investigate": ("generate", "evaluate", "deepen", "evaluate", "oppose", "weave"),
@@ -58,6 +62,8 @@ class MoveLog:
     dry: bool
     budget_tier: str
     deviated: str | None = None  # justification when the planned move was swapped
+    duration_s: float | None = None  # wall-clock of the move
+    usage: Usage = field(default_factory=Usage)  # tokens + cost of the move
 
 
 @dataclass(frozen=True)
@@ -65,7 +71,18 @@ class EngineResult:
     style: str
     seed: int
     moves: list[MoveLog] = field(default_factory=list)
-    stopped: str = "completed"  # "completed" | "budget"
+    stopped: str = "completed"  # "completed" | "budget" | "failed"
+    duration_s: float = 0.0  # total wall-clock of the run
+    usage: Usage = field(default_factory=Usage)  # totals across moves
+    error: str = ""  # set when stopped == "failed" (the completed moves before it are kept)
+
+
+def _fmt_k(n: int) -> str:
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n)
+
+
+def _fmt_usage(u: Usage) -> str:
+    return f"in {_fmt_k(u.billed_input)} out {_fmt_k(u.output_tokens)} ${u.cost_usd:.2f}"
 
 
 def _empty() -> Ledger:
@@ -134,6 +151,7 @@ class Engine:
         seed: int = 0,
         max_moves: int | None = None,
         target: str | None = None,
+        on_progress: Callable[[str], None] | None = None,
     ) -> EngineResult:
         if style not in STYLES:
             raise EngineError(f"unknown style: {style!r}")
@@ -144,66 +162,158 @@ class Engine:
         rng = random.Random(seed)
         moves = STYLES[style]
         budget = min(self.config.runs, max_moves if max_moves is not None else self.config.runs)
+        total = min(len(moves), budget)  # moves that will actually run — the "N" in "step i/N"
 
         logs: list[MoveLog] = []
         dry_streak = (session.read_ledger() or _empty()).dry_streak
         suggested: str | None = None
         stopped = "completed"
+        error = ""
+        total_usage = Usage()
+        run_start = time.monotonic()
+        self._progress_init(session, style, seed, target, total, on_progress)
 
         for i, planned in enumerate(moves):
             if i >= budget:
                 stopped = "budget"
                 break
 
-            before = session.read_ledger() or _empty()
-            move, justification = next_move(planned, dry_streak, suggested, before)
-            # a user-pinned --target overrides auto-selection for the target-moves (deepen/oppose/
-            # mutate) — "research this hypothesis"; otherwise the strongest survivor is chosen.
-            if target is not None and move in _TARGET_MOVES:
-                move_target = target
-            else:
-                move_target = select_target(move, before)
-            mutation_type = pick_mutation(rng) if move == "mutate" else None
-            partner = select_partner(before, move_target) if mutation_type == "combine" else None
+            # Roll back only THIS move on failure — completed moves stay committed (the ledger
+            # they wrote is valid state). A killed/failed move may have left partial files.
+            move_snap = snapshot_state(session)
+            try:
+                before = session.read_ledger() or _empty()
+                move, justification = next_move(planned, dry_streak, suggested, before)
+                # a user-pinned --target overrides auto-selection for deepen/oppose/mutate —
+                # "research this hypothesis"; otherwise the strongest survivor is chosen.
+                if target is not None and move in _TARGET_MOVES:
+                    move_target = target
+                else:
+                    move_target = select_target(move, before)
+                mutation_type = pick_mutation(rng) if move == "mutate" else None
+                partner = (
+                    select_partner(before, move_target) if mutation_type == "combine" else None
+                )
 
-            doc_before = _doc_bytes(session.document_file)
-            sources_before = _count_sources(session.output_dir)
+                head = f"[{i + 1}/{total}] {move}"
+                if move_target:
+                    head += f" →{move_target}"
+                if mutation_type:
+                    head += f" [{mutation_type}]"
+                self._emit(session, on_progress, f"{head} — виконую…")
 
-            result = self.runner.run(
-                RunRequest(
-                    role=move,
-                    session_dir=session.path,
-                    target_idea=move_target,
-                    mutation_type=mutation_type,
-                    partner_idea=partner,
-                    style_step=f"{style}[{i}]",
+                doc_before = _doc_bytes(session.document_file)
+                sources_before = _count_sources(session.output_dir)
+
+                t0 = time.monotonic()
+                result = self.runner.run(
+                    RunRequest(
+                        role=move,
+                        session_dir=session.path,
+                        target_idea=move_target,
+                        mutation_type=mutation_type,
+                        partner_idea=partner,
+                        style_step=f"{style}[{i}]",
+                    )
+                )
+                dt = time.monotonic() - t0
+
+                doc_after = _doc_bytes(session.document_file)
+                if move != "weave" and doc_after != doc_before:
+                    raise EngineError(
+                        f"move {move!r} touched DOCUMENT.md — only weave may write it"
+                    )
+
+                after = session.read_ledger() or _empty()
+                dry = is_dry(
+                    move,
+                    before,
+                    after,
+                    sources_added=max(0, _count_sources(session.output_dir) - sources_before),
+                    document_rebuilt=(move == "weave" and doc_after != doc_before),
+                )
+            except (RunnerError, EngineError, LedgerError) as e:
+                restore_state(session, move_snap)  # undo only the failed move; keep the rest
+                stopped, error = "failed", f"{type(e).__name__}: {e}"
+                self._emit(
+                    session,
+                    on_progress,
+                    f"хід {i + 1}/{total} впав: {e} — завершені ходи збережено",
+                )
+                break
+
+            dry_streak = dry_streak + 1 if dry else 0
+            suggested = result.contract.get("next_role")
+            total_usage = total_usage + result.usage
+            verdict = "сухий" if dry else "продуктивний"
+            self._emit(
+                session,
+                on_progress,
+                f"{head} — готово за {dt:.0f}s ({verdict}) · {_fmt_usage(result.usage)}",
+            )
+            logs.append(
+                MoveLog(
+                    i,
+                    move,
+                    move_target,
+                    mutation_type,
+                    dry,
+                    _BUDGET_TIER[move],
+                    justification,
+                    dt,
+                    result.usage,
                 )
             )
 
-            doc_after = _doc_bytes(session.document_file)
-            if move != "weave" and doc_after != doc_before:
-                raise EngineError(f"move {move!r} modified DOCUMENT.md — only weave may write it")
+        run_dt = time.monotonic() - run_start
+        self._emit(session, on_progress, f"разом: {run_dt:.0f}s · {_fmt_usage(total_usage)}")
+        self._write_engine_log(session, style, seed, logs, stopped, run_dt, total_usage)
+        return EngineResult(
+            style=style,
+            seed=seed,
+            moves=logs,
+            stopped=stopped,
+            duration_s=run_dt,
+            usage=total_usage,
+            error=error,
+        )
 
-            after = session.read_ledger() or _empty()
-            dry = is_dry(
-                move,
-                before,
-                after,
-                sources_added=max(0, _count_sources(session.output_dir) - sources_before),
-                document_rebuilt=(move == "weave" and doc_after != doc_before),
-            )
-            dry_streak = dry_streak + 1 if dry else 0
-            suggested = result.contract.get("next_role")
-            logs.append(
-                MoveLog(i, move, move_target, mutation_type, dry, _BUDGET_TIER[move], justification)
-            )
+    def _progress_init(
+        self, session, style: str, seed: int, target, total: int, on_progress
+    ) -> None:
+        """Start a fresh live progress log for this run (progress.log = the current run only)."""
+        session.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        tgt = f" target={target}" if target else ""
+        (session.artifacts_dir / "progress.log").write_text(
+            f"# {style} seed={seed}{tgt} — {total} ходів\n", encoding="utf-8"
+        )
+        self._emit(session, on_progress, f"стиль {style}: {total} ходів")
 
-        self._write_engine_log(session, style, seed, logs)
-        return EngineResult(style=style, seed=seed, moves=logs, stopped=stopped)
+    def _emit(self, session, on_progress, line: str) -> None:
+        """Append a progress line to progress.log (live trace) and to the caller, if watching."""
+        with (session.artifacts_dir / "progress.log").open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        if on_progress is not None:
+            on_progress(line)
 
-    def _write_engine_log(self, session, style: str, seed: int, logs: list[MoveLog]) -> None:
-        """Record style + seed + the move trace for reproducibility (an artifact, not state)."""
+    def _write_engine_log(
+        self,
+        session,
+        style: str,
+        seed: int,
+        logs: list[MoveLog],
+        stopped: str,
+        duration_s: float,
+        usage: Usage,
+    ) -> None:
+        """Append one line per run to engine.log — the history of styles executed on the session,
+        with total time, tokens and cost."""
         session.artifacts_dir.mkdir(parents=True, exist_ok=True)
         trace = " ".join(f"{m.move}{'*' if m.dry else ''}" for m in logs)
-        line = f"style={style} seed={seed} moves={len(logs)} [{trace}]\n"
-        (session.artifacts_dir / "engine.log").write_text(line, encoding="utf-8")
+        line = (
+            f"style={style} seed={seed} moves={len(logs)} {stopped} "
+            f"{duration_s:.0f}s in={usage.billed_input} out={usage.output_tokens} "
+            f"${usage.cost_usd:.2f} [{trace}]\n"
+        )
+        with (session.artifacts_dir / "engine.log").open("a", encoding="utf-8") as f:
+            f.write(line)

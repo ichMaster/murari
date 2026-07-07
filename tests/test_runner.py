@@ -17,7 +17,9 @@ from murari.runner import (
     MockAgentRunner,
     RunnerError,
     RunRequest,
+    Usage,
     _exit_detail,
+    _extract_usage,
     _parse_envelope,
     allowed_tools,
     build_prompt,
@@ -92,6 +94,16 @@ def test_deepen_seeks_both_sides():
     assert "ЗА" in p and "ПРОТИ" in p  # both-sides evidence, not one-directional
 
 
+def test_deepen_writes_structured_arguments():
+    p = build_prompt("deepen", target_idea="H1")
+    assert "## Аргументи" in p and "### H1" in p and "НЕ" in p  # structured, not crammed inline
+
+
+def test_oppose_writes_structured_arguments():
+    p = build_prompt("oppose", target_idea="H3")
+    assert "## Аргументи" in p and "### H3" in p and "ПРОТИ" in p
+
+
 @pytest.mark.parametrize("style_step", ["explore[5]", "debate[5]"])
 def test_weave_is_catalog_no_winner_in_divergent_styles(style_step):
     p = build_prompt("weave", style_step=style_step)
@@ -128,6 +140,39 @@ def test_weave_always_appends_scorecard(style_step):
     assert "ТАБЛИЦЮ-РАНЖУВАННЯ" in p
     for axis in ("Доказовість", "Оригінальність", "Популярність", "Пояснювальна сила"):
         assert axis in p
+
+
+def test_weave_renders_scorecard_from_ledger():
+    # the scorecard is rendered from LEDGER state, not invented at weave time
+    p = build_prompt("weave", style_step="investigate[5]")
+    assert "Ранжування" in p and "не вигадуй" in p
+
+
+@pytest.mark.parametrize("style_step", ["investigate[5]", "explore[5]", "debate[5]", None])
+def test_weave_writes_for_a_newcomer(style_step):
+    # DOCUMENT.md is explanatory (for a reader new to the topic), not a dense expert digest
+    p = build_prompt("weave", style_step=style_step)
+    assert "НОВОГО в темі" in p and "телеграфного" in p
+
+
+@pytest.mark.parametrize("style_step", ["investigate[5]", "explore[5]", None])
+def test_weave_preserves_untouched_ideas(style_step):
+    # rebuilding must not drop ideas — «за/проти» is rendered in full from the ## Аргументи state
+    p = build_prompt("weave", style_step=style_step)
+    assert "не викидай" in p and "Аргументи" in p and "нічого звідти не губи" in p
+
+
+def test_evaluate_score_only_in_explore():
+    p = build_prompt("evaluate", style_step="explore[4]")
+    assert "режим оцінки" in p and "джерела: ні" in p
+    assert "НЕ вішай вердиктів" in p
+
+
+@pytest.mark.parametrize("style_step", ["investigate[1]", "debate[4]", None])
+def test_evaluate_verifies_and_scores_in_convergent(style_step):
+    p = build_prompt("evaluate", style_step=style_step)
+    assert "вердикт" in p and "Ранжування" in p  # verify + sourced score
+    assert "джерела: так" in p
 
 
 @pytest.mark.parametrize("style_step", ["investigate[0]", None])
@@ -229,6 +274,45 @@ def test_exit_detail_reads_error_from_stdout_envelope():
 
 def test_exit_detail_handles_empty_output():
     assert "transient" in _exit_detail(_Proc())
+
+
+# --- usage (tokens + cost) ---
+
+
+def test_extract_usage_reads_tokens_and_cost():
+    env = {
+        "usage": {
+            "input_tokens": 5,
+            "output_tokens": 12,
+            "cache_read_input_tokens": 100,
+            "cache_creation_input_tokens": 200,
+        },
+        "total_cost_usd": 0.42,
+    }
+    u = _extract_usage(env)
+    assert u.input_tokens == 5 and u.output_tokens == 12
+    assert u.cache_read_tokens == 100 and u.cache_creation_tokens == 200
+    assert u.billed_input == 305 and u.cost_usd == 0.42
+
+
+def test_extract_usage_missing_fields_are_zero():
+    assert _extract_usage({}) == Usage()
+
+
+def test_usage_adds():
+    total = Usage(input_tokens=1, output_tokens=2, cost_usd=0.1) + Usage(
+        input_tokens=3, output_tokens=4, cost_usd=0.2
+    )
+    assert total.input_tokens == 4 and total.output_tokens == 6
+    assert abs(total.cost_usd - 0.3) < 1e-9
+
+
+def test_mock_runner_reports_usage(tmp_path):
+    mock = MockAgentRunner(
+        {"generate": _contract("generate")}, usage=Usage(input_tokens=7, output_tokens=3)
+    )
+    res = mock.run(RunRequest(role="generate", session_dir=tmp_path))
+    assert res.usage.input_tokens == 7 and res.usage.output_tokens == 3
 
 
 # --- mock runner ---

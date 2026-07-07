@@ -58,8 +58,9 @@ murari run .murari/brainstorm-sessions/session-*-heat --style evolve
 - `--seed J` — the RNG seed for mutation types and `combine` partners; the **same seed replays the
   same choices** (randomness lives in the orchestrator, never the model). Default `0`.
 - `--target Hxx` — (`run` only) pin the single-hypothesis moves (deepen/oppose/mutate) to a chosen
-  hypothesis instead of the auto-picked strongest. Use `open` to see the H-ids. Must exist in the
-  ledger, else the run errors.
+  hypothesis instead of the auto-picked strongest. Use `open` to see the H-ids. A **comma list**
+  (`--target H1,H3`) runs the whole style **once per hypothesis** (each its own budget). All ids
+  are validated up front — an unknown one errors before anything runs.
 - `--name S` — an optional slug for the session folder (`new` only; ASCII, else timestamp-only).
 
 ### Examples per command
@@ -89,6 +90,9 @@ murari run .murari/brainstorm-sessions/session-*-heat --seed 7
 # debate a *specific* hypothesis (see its H-id via `murari open`) — no winner is declared
 murari run .murari/brainstorm-sessions/session-*-heat --style debate --target H3
 
+# debate several, one run each (H1, then H3, then H5)
+murari run .murari/brainstorm-sessions/session-*-heat --style debate --target H1,H3,H5
+
 # stretch a session under a tighter budget
 MURARI_RUNS=3 murari run .murari/brainstorm-sessions/session-*-heat --style debate
 ```
@@ -100,8 +104,8 @@ murari open .murari/brainstorm-sessions/session-20260705-2312-heat
 # session: /…/session-20260705-2312-heat
 # topic: теплові насоси для багатоквартирних будинків
 # ledger: 5 hypotheses, 3 survivors, dry-streak 0
-#   H1 [confirmed] теплові насоси окупаються за ~7 років …
-#   H2 [partial] шумність — головний бар'єр у щільній забудові …
+#   H1 [confirmed] теплові насоси окупаються за ~7 років …  ★ дк5 ор2 пп4 пс4 (джерела)
+#   H2 [partial] шумність — головний бар'єр …               ★ дк3 ор3 пп2 пс3 (чорнова)
 #   …
 # document: present
 ```
@@ -125,14 +129,19 @@ A style is a named **sequence of moves** — the session scenario. Every style e
 only move that writes `DOCUMENT.md`). Roles: Ф=Фантазер · С=Суддя · Д=Дослідник · О=Опонент ·
 А=Алхімік · Т=Ткач; `H` = the chosen strongest idea.
 
-| Key | Style | Essence | Sequence |
-|---|---|---|---|
-| `explore` | Фантазія вшир | many options, wide field — **no verdict** | Ф → Ф → А → Ф → А → Т |
-| `debate` | Суперечка за один | thesis vs antithesis over `H` — **no winner** | Д → О → Д → О → С → Т |
-| `riff` | Фантазія вглиб одного | spin one option | Д → А → Ф → А → С → Т |
-| `investigate` | Розслідування **(default)** | hypotheses → verification (the v0.0 core) | Ф → С → Д → С → О → Т |
-| `evolve` | Еволюція | mutate the survivors | Ф → С → А → С → А → Т |
-| `premortem` | Премортем | "it already failed — why?" | О → О → Д → С → Т |
+| Key | Style | Essence | Works on | Sequence |
+|---|---|---|---|---|
+| `explore` | Фантазія вшир | many options, unsourced scoring — **no verdict** | all ideas | Ф → Ф → А → Ф → С → Т |
+| `debate` | Суперечка за один | thesis vs antithesis over `H` — **no winner** | **one chosen `H`** (`--target`) | Д → О → Д → О → С → Т |
+| `riff` | Фантазія вглиб одного | spin one option | **one chosen `H`** (`--target`) | Д → А → Ф → А → С → Т |
+| `investigate` | Розслідування **(default)** | hypotheses → verification (the v0.0 core) | all ideas | Ф → С → Д → С → О → Т |
+| `evolve` | Еволюція | mutate the survivors | survivors (`confirmed`/`partial`) | Ф → С → А → С → А → Т |
+| `premortem` | Премортем | "it already failed — why?" | **one chosen `H`** (`--target`) | О → О → Д → С → Т |
+
+**Works on** = which hypotheses the style's core moves act on. `explore`/`investigate` sweep the
+**whole pool**; `evolve` mutates the **survivors** (verdict `confirmed`/`partial`); `debate`,
+`riff` and `premortem` revolve around **one** hypothesis — the strongest by default, or the one you
+pin with `run --target Hxx`.
 
 Styles are templates, not rails: after **two dry moves in a row** the engine deviates — to the
 agent's suggested `next_role`, or a fallback (mutate the survivors, else generate) — and logs the
@@ -144,29 +153,56 @@ no bottom-line verdict — while the convergent styles (`investigate`, `evolve`,
 state-of-thought synthesis. The Фантазер runs wilder in `explore`/`riff`, and the Дослідник
 gathers evidence **both for and against** an idea (without issuing a verdict).
 
-Every `DOCUMENT.md` (all styles) **ends with a ranking table** of all hypotheses, scored ★1–5 on
-four axes — **Доказовість · Оригінальність · Популярність · Пояснювальна сила** — a scorecard
-rather than a single winner (the axes deliberately disagree, so no one idea tops them all).
+Scoring is **shared LEDGER state**: the **Суддя** rates every hypothesis ★1–5 on four axes —
+**Доказовість · Оригінальність · Популярність · Пояснювальна сила** — into a `## Ранжування`
+section of `LEDGER.md`. `explore` scores **without sources** (a quick estimate); `investigate`
+verifies and **re-scores with sources** (a sourced score supersedes an unsourced one), so the two
+run orders compose. Every `DOCUMENT.md` **ends with a ranking table** rendered from that section —
+a scorecard, not a single winner (the axes deliberately disagree). `murari open` shows the current
+scores next to each hypothesis (`★ дк5 ор2 пп4 пс4 (джерела)` / `(чорнова)`).
 
 ### What a run prints
 
+Moves are **streamed live** — each of the N steps prints as it starts and finishes (so you see
+which step of 6 the agent is on while the run is still going), then a summary:
+
 ```
 created /…/.murari/brainstorm-sessions/session-20260705-2312-heat
+стиль investigate: 6 ходів
+[1/6] generate — виконую…
+[1/6] generate — готово за 41s (продуктивний) · in 39.0k out 340 $0.58
+[2/6] evaluate — виконую…
+[2/6] evaluate — готово за 88s (продуктивний) · in 41.2k out 610 $0.71
+[3/6] deepen →H1 — виконую…
+…
+[6/6] weave — готово за 33s (продуктивний) · in 44.1k out 980 $0.66
+разом: 402s · in 234.0k out 2.0k $3.48
 session: /…/.murari/brainstorm-sessions/session-20260705-2312-heat
 style: investigate  seed: 0  (completed)
   0: generate (cheap)
   1: evaluate (medium)
-  2: deepen →H1 (expensive)
-  3: evaluate (medium)
-  4: oppose →H1 (medium)
-  5: weave (cheap)
+  …
+usage: 402s · in 234012 / out 2040 tokens · $3.48
 ledger: 3 hypotheses, 2 survivors, dry-streak 0
 document: present
 ```
 
-Each line is one move: its index, the role, the target hypothesis (`→H1`) if any, the mutation
-type (`[invert]`) for `mutate`, the budget tier, and ` DRY` when the move produced nothing. The
-final `(completed)` becomes `(budget)` if `MURARI_RUNS` stopped the style early.
+Each move logs its **time**, **tokens** (`in` = all input incl. cache, `out` = output) and
+**cost**; `разом:`/`usage:` are the run totals. Each summary line under `style:` is one move: its
+index, role, target hypothesis (`→H1`), mutation type (`[invert]`) for `mutate`, budget tier, and
+` DRY` when the move produced nothing. `(completed)` becomes `(budget)` if `MURARI_RUNS` stopped
+the style early.
+
+The same live trace is written to **`output/artifacts/progress.log`** (the current run — reset each
+time; check it if a run seems stuck), and **`output/artifacts/engine.log`** keeps **one line per
+run** — the history of which styles ran, with time / tokens / cost per run:
+
+```
+style=investigate seed=0 moves=6 completed 402s in=234012 out=2040 $3.48 [generate evaluate deepen evaluate oppose weave]
+style=explore     seed=1 moves=6 completed 118s in=61003 out=1200 $0.94 [generate* generate mutate generate evaluate weave]
+```
+
+(`*` marks a dry move.)
 
 ### Budgets & config (environment)
 
@@ -174,6 +210,7 @@ final `(completed)` becomes `(budget)` if `MURARI_RUNS` stopped the style early.
 |---|---|---|
 | `MURARI_RUNS` | agent moves per session (the cost ceiling) | `6` |
 | `MURARI_MAX_TURNS` | `--max-turns` per move | `15` |
+| `MURARI_RUN_TIMEOUT` | seconds before a single move is killed | `900` (15 min) |
 | `MURARI_MODEL` | agent model | `claude-opus-4-8` |
 | `MURARI_HOME` | base sessions dir | `<repo>/.murari` (gitignored) |
 
@@ -254,7 +291,8 @@ Everything lives under `MURARI_HOME` (default `.murari/`, gitignored). Each sess
     LEDGER.md  SOURCES.md  IDEAS.md   ← the agent's working state
     artifacts/
       run-N.json / run-N.log       ← raw run envelopes + per-run stats
-      engine.log                   ← (CLI) the style, seed, and move trace of the last run
+      progress.log                 ← (CLI) live per-move trace of the current run (reset each run)
+      engine.log                   ← (CLI) one line per run — the history of styles executed
 ```
 
 The whole session folder is the agent's sandbox: it reads `input/TOPIC.md` and writes into
@@ -266,8 +304,8 @@ synthesis (rebuilt each `weave`, not appended).
 
 | File | What it is |
 |------|------------|
-| `DOCUMENT.md` | **The deliverable.** Coherent prose; weighty claims rest on sources, unverified ones are marked hypothetical. Rewritten each `weave` (state, not a log). |
-| `LEDGER.md` | Every hypothesis with an H-id, status (`open`/`confirmed`/`refuted`/`partial`), source, lineage (`parents`, `mutation`), the run journal, and the `Сухі прогони поспіль` (dry-run) counter. |
+| `DOCUMENT.md` | **The deliverable.** Explanatory prose written **for a reader new to the topic** (terms defined, full connective sentences — not a dense expert digest); weighty claims rest on sources, unverified ones are marked hypothetical. Rewritten each `weave` (state, not a log). |
+| `LEDGER.md` | Every hypothesis with an H-id, status (`open`/`confirmed`/`refuted`/`partial`), source, lineage (`parents`, `mutation`); the **run journal** (`## Прогони` — the move-by-move history, e.g. how a debate went); the **`## Ранжування`** scores; the **`## Аргументи`** за/проти per hypothesis (`### Hn` bullets, written by Дослідник/Опонент); and the `Сухі прогони поспіль` counter. |
 | `SOURCES.md` | One line per source: the URL and what was taken from it. |
 | `IDEAS.md` | Accumulated ideas, each tagged `born_from: search` / `prior` / `mutation` / `user`. |
 | `artifacts/run-N.json` | The raw run envelope; `result` holds the v2 JSON contract. |
@@ -275,6 +313,51 @@ synthesis (rebuilt each `weave`, not appended).
 **The point to look for:** an idea whose `born_from` is `search` — one that grew from what the web
 returned, not from priors. A move that produces nothing is honestly marked `dry_run: true`; two dry
 moves in a row and the engine changes the angle.
+
+### Hypothesis statuses — and which role changes them
+
+Every hypothesis in `LEDGER.md` carries a status in brackets, e.g. `- [H4][open] …`. It records how
+far the idea has been **checked** (not how good it is — that's the ★ score in `## Ранжування`):
+
+| Status | Meaning | In the ledger |
+|---|---|---|
+| `open` | proposed, **not yet checked** — no source, no verdict | `- [H4][open] текст` |
+| `confirmed` | **backed** by a source | `- [H1][confirmed] текст — джерело: url` |
+| `refuted` | **disproven** by a source | `- [H2][refuted] текст — джерело: url` |
+| `partial` | true **only under conditions** | `- [H3][partial] текст — джерело: url — примітка: …` |
+
+**Which role changes the status:**
+
+| Role (move) | Effect on status |
+|---|---|
+| **Фантазер** (`generate`), **Алхімік** (`mutate`), the user | create `open` candidates **only** — never a verdict |
+| **Суддя** (`evaluate`) | sets `confirmed`/`refuted`/`partial` **with a source**; in `explore` it only scores and leaves status `open` |
+| **Дослідник** (`deepen`) | may shift the status on the ideas it digs into (evidence for/against) |
+| **Опонент** (`oppose`) | can move `confirmed → partial`/`refuted` on counter-evidence |
+| **Ткач** (`weave`) | never changes status — reads state, writes the document |
+
+Two hard rules: **no verdict without a source URL**, and **generative moves produce only `open`**.
+For target selection the engine ranks `confirmed > partial > open > refuted`; "survivors"
+(`confirmed`/`partial`) are what `evolve` and mutations build on.
+
+### Idea provenance — `born_from` (and who sets it)
+
+Independently of the status, each idea in `IDEAS.md` (and each `fresh_ideas` entry in the contract)
+is tagged `born_from`, recording **where the idea came from**. It's filled honestly — it's how
+murari tells a fresh, search-grown idea from a retelling of the model's priors.
+
+| Value | Meaning | Set by |
+|---|---|---|
+| `prior` | from the model's existing knowledge (no web) | **Фантазер** (`generate`) |
+| `search` | **grew from a web finding** — the freshest kind; carries a `basis` naming the finding | the web-using moves: **Суддя** (`evaluate`), **Дослідник** (`deepen`), **Опонент** (`oppose`) |
+| `mutation` | a descendant from a "what if" transform (records the type, e.g. `invert`) | **Алхімік** (`mutate`) |
+| `user` | contributed by the human participant | the **user** (via chat) |
+
+The prized case is `born_from: search` with a `basis` pointing at a specific finding — an idea that
+grew out of what the web returned, not out of priors. That **reverse edge** (a verified finding
+seeding the next idea) is where murari's freshness comes from, and a run that produces none of it is
+honestly marked `dry_run: true`. (`status` and `born_from` are orthogonal: a `born_from: search`
+idea still starts `open` until a verdict with a source lands.)
 
 ## The rules the agent must obey (why they matter)
 
@@ -291,7 +374,7 @@ moves in a row and the engine changes the angle.
 ## Run the tests
 
 ```bash
-python3 -m pytest tests/        # 113 offline tests — no paid calls (the agent is mocked)
+python3 -m pytest tests/        # offline tests — no paid calls (the agent is mocked)
 ```
 
 ## What's next

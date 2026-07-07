@@ -142,6 +142,7 @@ deepen expensive). User moves are free.
 |---|---|---|
 | `MURARI_RUNS` | agent moves per session | 6 |
 | `MURARI_MAX_TURNS` | `--max-turns` per move | 15 |
+| `MURARI_RUN_TIMEOUT` | seconds before a single move is killed | 900 (15 min) |
 | `MURARI_MODEL` | agent model | opus (claude-opus-4-8) |
 | `MURARI_HOME` | base sessions dir | `<repo>/.murari` (gitignored) |
 

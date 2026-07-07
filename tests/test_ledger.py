@@ -11,11 +11,99 @@ from murari.ledger import LedgerError, is_dry, is_productive, parse_ledger
 FULL = (Path(__file__).parent / "fixtures" / "ledger-v2" / "full.md").read_text(encoding="utf-8")
 
 
-def _led(hyp_lines: str = "", dry: int = 0):
-    """Build a Ledger from just the hypothesis lines (+ empty journal)."""
+def _led(hyp_lines: str = "", dry: int = 0, ranking: str = "", arguments: str = ""):
+    """Build a Ledger from hypothesis lines (+ empty journal, optional ranking / arguments)."""
+    rank = f"\n## Ранжування\n{ranking}\n" if ranking else ""
+    args = f"\n## Аргументи\n{arguments}\n" if arguments else ""
     return parse_ledger(
-        f"# LEDGER\n\n## Гіпотези\n{hyp_lines}\n\n## Прогони\n\n## Сухі прогони поспіль: {dry}\n"
+        f"# LEDGER\n\n## Гіпотези\n{hyp_lines}\n\n## Прогони\n{rank}{args}\n"
+        f"## Сухі прогони поспіль: {dry}\n"
     )
+
+
+# --- scoring (## Ранжування) ---
+
+
+def test_parse_scores():
+    led = _led(
+        "- [H1][open] ідея\n- [H2][open] інша\n",
+        ranking="- H1 — доказ:2 ориг:4 попул:2 поясн:3 — джерела: ні\n"
+        "- H2 — доказ:5 ориг:2 попул:4 поясн:4 — джерела: так\n",
+    )
+    assert {s.hid for s in led.scores} == {"H1", "H2"}
+    s1 = led.score("H1")
+    assert s1.axes == (2, 4, 2, 3) and s1.sourced is False
+    assert led.score("H2").sourced is True
+
+
+def test_scores_optional():
+    assert _led("- [H1][open] ідея\n").scores == ()  # no Ранжування section is fine
+
+
+def test_score_out_of_range_raises():
+    with pytest.raises(LedgerError, match="1–5"):
+        _led("- [H1][open] ідея\n", ranking="- H1 — доказ:9 ориг:4 попул:2 поясн:3 — джерела: ні\n")
+
+
+def test_score_for_unknown_hypothesis_raises():
+    with pytest.raises(LedgerError, match="unknown hypothesis"):
+        _led("- [H1][open] ідея\n", ranking="- H7 — доказ:2 ориг:4 попул:2 поясн:3 — джерела: ні\n")
+
+
+# --- arguments (## Аргументи) ---
+
+
+def test_parse_arguments():
+    led = _led(
+        "- [H2][partial] wetware — джерело: https://e.com/x\n- [H3][open] інша\n",
+        arguments=(
+            "### H2\n"
+            "- ЗА: два продукти з цифрами — джерело: https://e.com/za\n"
+            "- ПРОТИ: нема памʼяті між сесіями — джерело: https://e.com/proti\n"
+            "### H3\n"
+            "- ПРОТИ: без джерела ще\n"
+        ),
+    )
+    h2 = led.arguments_for("H2")
+    assert [a.side for a in h2] == ["за", "проти"]
+    assert h2[0].source == "https://e.com/za" and "продукти" in h2[0].text
+    h3 = led.arguments_for("H3")
+    assert len(h3) == 1 and h3[0].side == "проти" and h3[0].source is None
+
+
+def test_arguments_optional():
+    assert _led("- [H1][open] a\n").arguments == ()
+
+
+def test_argument_for_unknown_hypothesis_raises():
+    with pytest.raises(LedgerError, match="unknown hypothesis"):
+        _led("- [H1][open] a\n", arguments="### H9\n- ЗА: x — джерело: https://e.com/1\n")
+
+
+def test_argument_without_heading_raises():
+    with pytest.raises(LedgerError, match="before any"):
+        _led("- [H1][open] a\n", arguments="- ЗА: x — джерело: https://e.com/1\n")
+
+
+def test_deepen_productive_via_arguments():
+    before = _led("- [H1][open] a\n")
+    after = _led(
+        "- [H1][open] a\n",
+        arguments="### H1\n- ЗА: x — джерело: https://e.com/1\n- ПРОТИ: y — джерело: https://e.com/2\n",
+    )
+    # deepen with no SOURCES delta is still productive if it wrote ≥2 arguments
+    assert is_productive("deepen", before, after, sources_added=0) is True
+
+
+def test_score_only_evaluate_is_productive():
+    before = _led("- [H1][open] a\n- [H2][open] b\n")
+    after = _led(
+        "- [H1][open] a\n- [H2][open] b\n",
+        ranking="- H1 — доказ:2 ориг:4 попул:2 поясн:3 — джерела: ні\n",
+    )
+    # explore's unsourced scoring adds no verdict, but a fresh score keeps it productive
+    assert is_productive("evaluate", before, after) is True
+    assert is_dry("evaluate", before, after) is False
 
 
 # --- parsing ---

@@ -20,15 +20,13 @@ from pathlib import Path
 from murari.config import Config, load_config
 from murari.engine import DEFAULT_STYLE, STYLES, Engine, EngineError, EngineResult
 from murari.ledger import LedgerError
-from murari.runner import AgentRunner, ClaudeCliRunner, RunnerError
+from murari.runner import AgentRunner, ClaudeCliRunner
 from murari.session import (
     Session,
     SessionError,
     create_session,
     list_sessions,
     open_session,
-    restore_state,
-    snapshot_state,
 )
 
 
@@ -56,7 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--moves", type=int, default=None, help="cap moves below MURARI_RUNS")
     run.add_argument("--seed", type=int, default=0, help="RNG seed for mutation/target choices")
     run.add_argument(
-        "--target", default=None, metavar="Hxx", help="pin deepen/oppose/mutate to this hypothesis"
+        "--target",
+        default=None,
+        metavar="Hxx[,Hyy…]",
+        help="pin deepen/oppose/mutate to a hypothesis; a comma list runs the style once per one",
     )
 
     sub.add_parser("list", help="list sessions, most recent first")
@@ -71,6 +72,11 @@ def _format_result(session: Session, res: EngineResult) -> str:
         flag = " DRY" if m.dry else ""
         dev = f"  ⤳ {m.deviated}" if m.deviated else ""
         lines.append(f"  {m.index}: {m.move}{tgt}{mut} ({m.budget_tier}){flag}{dev}")
+    u = res.usage
+    lines.append(
+        f"usage: {res.duration_s:.0f}s · in {u.billed_input} / out {u.output_tokens} tokens "
+        f"· ${u.cost_usd:.2f}"
+    )
     led = session.read_ledger()
     if led is not None:
         lines.append(
@@ -90,16 +96,20 @@ def _run_style(
     moves: int | None,
     target: str | None = None,
 ) -> int:
-    """Run a style with snapshot/restore failure hygiene; print the result trace."""
+    """Run a style, streaming live progress. The engine keeps completed moves and rolls back only
+    a failed move, so a mid-run failure never discards the paid work before it."""
     engine = Engine(config, runner)
-    snap = snapshot_state(session)
     try:
-        res = engine.run_style(session, style, seed=seed, max_moves=moves, target=target)
-    except (EngineError, RunnerError, LedgerError) as e:
-        restore_state(session, snap)
-        print(f"run failed ({type(e).__name__}): {e} — workspace restored", file=sys.stderr)
+        res = engine.run_style(
+            session, style, seed=seed, max_moves=moves, target=target, on_progress=print
+        )
+    except (EngineError, LedgerError) as e:  # pre-run: unknown style/target, malformed ledger
+        print(f"cannot run: {e}", file=sys.stderr)
         return 1
     print(_format_result(session, res))
+    if res.stopped == "failed":
+        print(f"run stopped: {res.error} — completed moves kept", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -126,11 +136,31 @@ def cmd_open(args: argparse.Namespace, config: Config, runner: AgentRunner) -> i
             f"ledger: {len(led.hypotheses)} hypotheses, {len(led.survivors())} survivors, "
             f"dry-streak {led.dry_streak}"
         )
-        for h in led.hypotheses:  # list H-ids so a --target can be chosen
-            text = h.text if len(h.text) <= 70 else h.text[:69] + "…"
-            print(f"  {h.id} [{h.status}] {text}")
+        for h in led.hypotheses:  # list H-ids (with the ranking, if scored) for --target
+            text = h.text if len(h.text) <= 55 else h.text[:54] + "…"
+            s = led.score(h.id)
+            score = ""
+            if s is not None:
+                mark = "джерела" if s.sourced else "чорнова"
+                score = (
+                    f"  ★ дк{s.evidence} ор{s.originality} "
+                    f"пп{s.popularity} пс{s.explanatory} ({mark})"
+                )
+            args = led.arguments_for(h.id)
+            argc = ""
+            if args:
+                za = sum(1 for a in args if a.side == "за")
+                argc = f"  ({za} за / {len(args) - za} проти)"
+            print(f"  {h.id} [{h.status}] {text}{score}{argc}")
     print("document: " + ("present" if session.read_document() else "none"))
     return 0
+
+
+def _parse_targets(raw: str | None) -> list[str | None]:
+    """`None` → a single auto-target run; "H1,H3" → one run per listed hypothesis."""
+    if not raw or not raw.strip():
+        return [None]
+    return [t.strip() for t in raw.split(",") if t.strip()]
 
 
 def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
@@ -139,7 +169,27 @@ def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> in
     except SessionError as e:
         print(f"cannot open session: {e}", file=sys.stderr)
         return 1
-    return _run_style(session, config, runner, args.style, args.seed, args.moves, args.target)
+
+    targets = _parse_targets(args.target)
+    if any(t is not None for t in targets):  # validate the whole list up front (before spending)
+        try:
+            led = session.read_ledger()
+        except LedgerError as e:
+            print(f"cannot read ledger: {e}", file=sys.stderr)
+            return 1
+        ids = led.ids() if led else set()
+        unknown = [t for t in targets if t not in ids]
+        if unknown:
+            avail = sorted(ids) or "none"
+            print(f"unknown target(s) {unknown}; available: {avail}", file=sys.stderr)
+            return 1
+
+    rc = 0
+    for target in targets:
+        if len(targets) > 1:
+            print(f"--- target {target} ---")
+        rc |= _run_style(session, config, runner, args.style, args.seed, args.moves, target)
+    return rc
 
 
 def cmd_list(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:

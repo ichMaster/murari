@@ -67,11 +67,12 @@ def test_only_weave_appears_once_at_the_end():
         assert seq.count("weave") == 1, f"{name} weaves more than once"
 
 
-def test_explore_is_divergent_no_verdict_moves():
-    # explore surfaces many ideas; it must not evaluate/deepen (those converge / narrow)
+def test_explore_is_divergent():
+    # explore surfaces many ideas (generate+mutate), scores them once (score-only evaluate),
+    # then catalogs; it must not deepen (that narrows to a single idea)
     seq = STYLES["explore"]
-    assert seq == ("generate", "generate", "mutate", "generate", "mutate", "weave")
-    assert "evaluate" not in seq and "deepen" not in seq
+    assert seq == ("generate", "generate", "mutate", "generate", "evaluate", "weave")
+    assert "deepen" not in seq
 
 
 # --- target / partner / mutation selection ---
@@ -203,8 +204,10 @@ def test_run_style_document_guard_rejects_non_weave_write(tmp_path):
             s.document_file.write_text("sneaky non-weave write\n", encoding="utf-8")
 
     mock = MockAgentRunner(_contracts(), on_run=_sneaky)
-    with pytest.raises(EngineError, match="DOCUMENT"):
-        Engine(cfg, mock).run_style(session, "explore", seed=0)
+    res = Engine(cfg, mock).run_style(session, "explore", seed=0)
+    # the guard stops the run gracefully (no raise) and reports it; completed moves are kept
+    assert res.stopped == "failed" and "DOCUMENT" in res.error
+    assert res.moves == []  # failed on the very first move → nothing completed
 
 
 def test_run_style_deviates_after_two_dry_moves(tmp_path):
@@ -270,6 +273,20 @@ def test_run_style_unknown_target_raises(tmp_path, fake_agent_cls):
         Engine(cfg, mock).run_style(session, "debate", target="H99")
 
 
+def test_run_style_keeps_completed_moves_on_failure(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    # contracts for the first two moves only → investigate's 3rd move (deepen) raises RunnerError
+    partial = {k: _contracts()[k] for k in ("generate", "evaluate")}
+    mock = MockAgentRunner(partial, on_run=fake_agent_cls())
+    res = Engine(cfg, mock).run_style(session, "investigate", seed=0)
+
+    assert res.stopped == "failed" and "RunnerError" in res.error
+    assert [m.move for m in res.moves] == ["generate", "evaluate"]  # completed moves kept
+    led = session.read_ledger()
+    assert led is not None and len(led.hypotheses) == 3  # generate's work survived the failure
+
+
 def test_run_style_unknown_style_raises(tmp_path, fake_agent_cls):
     cfg = _cfg(tmp_path)
     session = create_session(cfg, "тема")
@@ -286,6 +303,58 @@ def test_run_style_writes_engine_log(tmp_path, fake_agent_cls):
 
     log = (session.artifacts_dir / "engine.log").read_text(encoding="utf-8")
     assert "style=investigate" in log and "seed=42" in log
+
+
+def test_run_style_emits_live_progress(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    lines: list[str] = []
+    Engine(cfg, mock).run_style(session, "investigate", seed=0, on_progress=lines.append)
+
+    # a start + a done line per move, numbered "step i/N of 6"
+    assert any(ln.startswith("[1/6] generate — виконую") for ln in lines)
+    assert any("[6/6] weave" in ln and "готово за" in ln for ln in lines)
+    # and persisted live to progress.log
+    prog = (session.artifacts_dir / "progress.log").read_text(encoding="utf-8")
+    assert "[1/6] generate" in prog and "[6/6] weave" in prog
+
+
+def test_progress_log_resets_per_run(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    Engine(cfg, mock).run_style(session, "explore", seed=0, max_moves=2)  # 2-move run
+    prog = (session.artifacts_dir / "progress.log").read_text(encoding="utf-8")
+    assert prog.count("виконую") == 2  # only the current run's moves, not accumulated
+
+
+def test_run_style_aggregates_usage_and_time(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())  # 100 in / 20 out / $0.01 a move
+    res = Engine(cfg, mock).run_style(session, "investigate", seed=0)  # 6 moves
+
+    assert res.usage.billed_input == 600  # 6 × 100
+    assert res.usage.output_tokens == 120  # 6 × 20
+    assert abs(res.usage.cost_usd - 0.06) < 1e-9
+    # totals persisted to engine.log; per-move + total in progress.log
+    log = (session.artifacts_dir / "engine.log").read_text(encoding="utf-8")
+    assert "in=600" in log and "out=120" in log and "$0.06" in log
+    prog = (session.artifacts_dir / "progress.log").read_text(encoding="utf-8")
+    assert "in 100 out 20 $0.01" in prog and "разом:" in prog
+
+
+def test_engine_log_accumulates_style_history(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    Engine(cfg, mock).run_style(session, "investigate", seed=0)
+    Engine(cfg, mock).run_style(session, "explore", seed=1)
+
+    log = (session.artifacts_dir / "engine.log").read_text(encoding="utf-8").strip()
+    assert "style=investigate" in log and "style=explore" in log
+    assert len(log.splitlines()) == 2  # one line per run — the styles executed on this session
 
 
 def test_generative_roles_constant_matches_no_web_moves():

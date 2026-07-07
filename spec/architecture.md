@@ -93,9 +93,22 @@ modes DOCUMENT.md **closes with a multi-axis ranking table** of every hypothesis
 (the axes disagree). The **Фантазер** likewise runs wilder (speculative, no default debunking) in
 `explore`/`riff`, and **Дослідник** gathers evidence both for and against an idea without a verdict.
 
+Arguments are **shared LEDGER state** too: the **Дослідник** and **Опонент** write each за/проти
+point as its own bullet under `### Hn` in a `## Аргументи` section (with a source), rather than
+cramming a blob into the hypothesis line — so a debate is skimmable, `open` ideas keep their
+arguments across a document rebuild, and the weave renders them into the document's «за/проти».
+
+Scoring is **shared LEDGER state**, not a weave-time flourish. The **Суддя** (`evaluate`) is the
+scorer: it writes the axes into a `## Ранжування` section of `LEDGER.md` — **unsourced** (`джерела:
+ні`) in `explore` (a quick estimate, no verdicts) and **sourced** (`джерела: так`) when it verifies
+in the convergent styles; a sourced score supersedes an unsourced one, so the two run orders
+compose (explore estimates, investigate refines). The weave move only **renders** this section into
+the document's table.
+
 Target selection for the single-hypothesis moves (deepen/oppose/mutate) is deterministic — the
 strongest survivor — but a user may **pin** it with `run --target Hxx` (validated against the
-ledger) to research a specific hypothesis; `open` lists the H-ids to choose from.
+ledger) to research a specific hypothesis; a **comma list** (`--target H1,H3`) runs the style once
+per hypothesis (a batch, each its own budget). `open` lists the H-ids to choose from.
 
 ## Session workspace
 
@@ -112,7 +125,7 @@ session-<timestamp>[-slug]/
 | file | role | written by |
 |---|---|---|
 | `TOPIC.md` | the user's **topic** (seeds are chat-derived from replies; never hand-authored) | chat layer (RO to agent) |
-| `LEDGER.md` | full hypothesis state (H-ids, lineage, «випробувано» marks) + **run journal** + dry counter | all roles |
+| `LEDGER.md` | full hypothesis state (H-ids, lineage, «випробувано» marks) + **run journal** + **`## Ранжування`** scores + **`## Аргументи`** за/проти + dry counter | all roles |
 | `SOURCES.md` | one line per source: url + what was taken | evaluating roles |
 | `IDEAS.md` | accumulated ideas with `born_from: search\|prior\|mutation\|user` | all roles |
 | `DOCUMENT.md` | **session deliverable** — coherent state of thought; `created`/`updated` stamps | **Ткач only** |

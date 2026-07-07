@@ -18,7 +18,17 @@ _HYP = re.compile(r"^-\s*\[(H\d+)\]\[(\w+)\]\s+(.+)$")
 _RUN = re.compile(r"^-\s*(\d+):\s*(\w+)\((.*?)\)\s*→\s*(.*)$")
 _DRY = re.compile(r"^##\s*Сухі прогони поспіль:\s*(\d+)\s*$", re.M)
 _FIELD = re.compile(r"^(джерело|випробувано|parents|mutation|примітка):\s*(.*)$")
+# `## Ранжування` row: - H1 — доказ:2 ориг:4 попул:2 поясн:3 — джерела: ні
+_SCORE = re.compile(
+    r"^-\s*(H\d+)\s+—\s+доказ:(\d)\s+ориг:(\d)\s+попул:(\d)\s+поясн:(\d)\s+—\s+джерела:\s*(так|ні)\s*$"
+)
+# `## Аргументи`: a `### Hn` heading, then `- ЗА:/ПРОТИ: text — джерело: url` bullets.
+_ARG_HEAD = re.compile(r"^###\s+(H\d+)\s*$")
+_ARG = re.compile(r"^-\s*(ЗА|ПРОТИ):\s+(.+?)(?:\s+—\s+джерело:\s*(\S+))?\s*$")
 _EXECUTORS = ("агент", "користувач")
+
+# The four scorecard axes (each ★1–5). Order matters — it is the LEDGER/render column order.
+SCORE_AXES = ("доказовість", "оригінальність", "популярність", "пояснювальна сила")
 
 # Verdict strength for target selection (strongest-first): confirmed > partial > open > refuted.
 _VERDICT_RANK = {"confirmed": 3, "partial": 2, "open": 1, "refuted": 0}
@@ -45,6 +55,34 @@ class Hypothesis:
 
 
 @dataclass(frozen=True)
+class Score:
+    """A hypothesis's multi-axis rating (★1–5). `sourced` marks whether evidence backs it:
+    the Суддя scores unsourced in explore and re-scores sourced in investigate."""
+
+    hid: str
+    evidence: int  # доказовість
+    originality: int  # оригінальність
+    popularity: int  # популярність
+    explanatory: int  # пояснювальна сила
+    sourced: bool
+
+    @property
+    def axes(self) -> tuple[int, int, int, int]:
+        return (self.evidence, self.originality, self.popularity, self.explanatory)
+
+
+@dataclass(frozen=True)
+class Argument:
+    """One за/проти point about a hypothesis, gathered by the Дослідник or Опонент. Kept in the
+    `## Аргументи` section as skimmable state — not crammed into the hypothesis line."""
+
+    hid: str
+    side: str  # "за" | "проти"
+    text: str
+    source: str | None = None
+
+
+@dataclass(frozen=True)
 class RunEntry:
     n: int
     move: str
@@ -58,10 +96,19 @@ class Ledger:
     hypotheses: tuple[Hypothesis, ...] = ()
     runs: tuple[RunEntry, ...] = ()
     dry_streak: int = 0
+    scores: tuple[Score, ...] = ()
+    arguments: tuple[Argument, ...] = ()
     _by_id: dict[str, Hypothesis] = field(default_factory=dict, compare=False, repr=False)
+    _score_by_id: dict[str, Score] = field(default_factory=dict, compare=False, repr=False)
 
     def by_id(self, hid: str) -> Hypothesis | None:
         return self._by_id.get(hid)
+
+    def score(self, hid: str) -> Score | None:
+        return self._score_by_id.get(hid)
+
+    def arguments_for(self, hid: str) -> list[Argument]:
+        return [a for a in self.arguments if a.hid == hid]
 
     def ids(self) -> set[str]:
         return set(self._by_id)
@@ -96,12 +143,21 @@ class Ledger:
         return max(pool, default=None, key=lambda h: h.strength)
 
 
-def _make(hyps: list[Hypothesis], runs: list[RunEntry], dry: int) -> Ledger:
+def _make(
+    hyps: list[Hypothesis],
+    runs: list[RunEntry],
+    dry: int,
+    scores: list[Score],
+    arguments: list[Argument],
+) -> Ledger:
     return Ledger(
         hypotheses=tuple(hyps),
         runs=tuple(runs),
         dry_streak=dry,
+        scores=tuple(scores),
+        arguments=tuple(arguments),
         _by_id={h.id: h for h in hyps},
+        _score_by_id={s.hid: s for s in scores},
     )
 
 
@@ -165,6 +221,45 @@ def _parse_hypothesis(line: str) -> Hypothesis:
     )
 
 
+def _parse_score(line: str) -> Score:
+    m = _SCORE.match(line)
+    if not m:
+        raise LedgerError(f"malformed ranking line: {line!r}")
+    ev, orig, pop, expl = (int(m.group(i)) for i in range(2, 6))
+    for v in (ev, orig, pop, expl):
+        if not 1 <= v <= 5:
+            raise LedgerError(f"score out of 1–5 range in {line!r}")
+    return Score(
+        hid=m.group(1),
+        evidence=ev,
+        originality=orig,
+        popularity=pop,
+        explanatory=expl,
+        sourced=(m.group(6) == "так"),
+    )
+
+
+def _parse_arguments(lines: list[str]) -> list[Argument]:
+    """Parse the `## Аргументи` section: `### Hn` headings grouping `- ЗА:/ПРОТИ: …` bullets."""
+    out: list[Argument] = []
+    cur: str | None = None
+    for line in lines:
+        head = _ARG_HEAD.match(line.strip())
+        if head:
+            cur = head.group(1)
+            continue
+        if not line.strip().startswith("- "):
+            continue
+        m = _ARG.match(line.strip())
+        if not m:
+            raise LedgerError(f"malformed argument line: {line!r}")
+        if cur is None:
+            raise LedgerError(f"argument before any '### Hn' heading: {line!r}")
+        side = "за" if m.group(1) == "ЗА" else "проти"
+        out.append(Argument(hid=cur, side=side, text=m.group(2).strip(), source=m.group(3)))
+    return out
+
+
 def _parse_run(line: str) -> RunEntry:
     m = _RUN.match(line)
     if not m:
@@ -198,10 +293,25 @@ def parse_ledger(text: str) -> Ledger:
 
     runs = [_parse_run(ln) for ln in sections.get("Прогони", []) if ln.strip().startswith("- ")]
 
+    # `## Ранжування` is optional (old ledgers and pre-score runs have none).
+    scores = [
+        _parse_score(ln) for ln in sections.get("Ранжування", []) if ln.strip().startswith("- ")
+    ]
+    known = {h.id for h in hyps}
+    for s in scores:
+        if s.hid not in known:
+            raise LedgerError(f"ranking references unknown hypothesis: {s.hid}")
+
+    # `## Аргументи` is optional too.
+    arguments = _parse_arguments(sections.get("Аргументи", []))
+    for a in arguments:
+        if a.hid not in known:
+            raise LedgerError(f"argument references unknown hypothesis: {a.hid}")
+
     m = _DRY.search(text)
     if not m:
         raise LedgerError("missing 'Сухі прогони поспіль: N' counter")
-    return _make(hyps, runs, int(m.group(1)))
+    return _make(hyps, runs, int(m.group(1)), scores, arguments)
 
 
 # --- Per-move productivity ---------------------------------------------------
@@ -222,6 +332,17 @@ def _newly_verdicted(before: Ledger, after: Ledger) -> int:
     return count
 
 
+def _rescored(before: Ledger, after: Ledger) -> int:
+    """Hypotheses whose ranking appeared or changed — the productive output of a score-only
+    evaluate (explore), where verdicts are absent because the scoring carries no sources."""
+    return sum(1 for s in after.scores if before.score(s.hid) != s)
+
+
+def _new_arguments(before: Ledger, after: Ledger) -> int:
+    """Arguments added this move — deepen/oppose write them to `## Аргументи`."""
+    return max(0, len(after.arguments) - len(before.arguments))
+
+
 def is_productive(
     move: str,
     before: Ledger,
@@ -237,11 +358,12 @@ def is_productive(
     if move == "generate":
         return _new_ids(before, after) >= 3
     if move == "evaluate":
-        return _newly_verdicted(before, after) >= 1
+        # verify+score (investigate) or score-only (explore) — either counts as productive
+        return _newly_verdicted(before, after) >= 1 or _rescored(before, after) >= 1
     if move == "deepen":
-        return sources_added >= 2
+        return sources_added >= 2 or _new_arguments(before, after) >= 2
     if move == "oppose":
-        return sources_added >= 1
+        return sources_added >= 1 or _new_arguments(before, after) >= 1
     if move == "mutate":
         return _new_ids(before, after) >= 1
     if move == "weave":

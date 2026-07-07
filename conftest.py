@@ -27,6 +27,8 @@ class FakeAgent:
         self.hyps: list[dict] = []
         self.sources = 0
         self._n = 0
+        self.scored = False  # set once an evaluate has written the ## Ранжування section
+        self.args: list[tuple[str, str, str]] = []  # (hid, side, text) for the ## Аргументи section
 
     def _add(self, *, status="open", source=None, parents=(), mutation=None) -> str:
         self._n += 1
@@ -54,8 +56,30 @@ class FakeAgent:
             if h["mutation"]:
                 row += f" — mutation: {h['mutation']}"
             lines.append(row)
-        lines += ["", "## Прогони", "", "## Сухі прогони поспіль: 0", ""]
+        lines += ["", "## Прогони", ""]
+        if self.scored:  # the Суддя's ## Ранжування (sourced iff the hypothesis got a verdict)
+            lines.append("## Ранжування")
+            for h in self.hyps:
+                sourced = "так" if h["source"] else "ні"
+                lines.append(f"- {h['id']} — доказ:2 ориг:3 попул:2 поясн:3 — джерела: {sourced}")
+            lines.append("")
+        if self.args:  # the Дослідник/Опонент за/проти, grouped per hypothesis
+            lines.append("## Аргументи")
+            for hid in dict.fromkeys(a[0] for a in self.args):
+                lines.append(f"### {hid}")
+                lines += [
+                    f"- {side}: {text} — джерело: https://e.com/arg"
+                    for h, side, text in self.args
+                    if h == hid
+                ]
+            lines.append("")
+        lines += ["## Сухі прогони поспіль: 0", ""]
         session.ledger_file.write_text("\n".join(lines), encoding="utf-8")
+
+    def _add_arg(self, hid: str | None, side: str) -> None:
+        """Record a за/проти point for a known hypothesis (the target of deepen/oppose)."""
+        if hid and any(h["id"] == hid for h in self.hyps):
+            self.args.append((hid, side, f"{side.lower()} довід {hid}"))
 
     def _add_sources(self, session: Session, n: int) -> None:
         f = session.output_dir / "SOURCES.md"
@@ -72,6 +96,7 @@ class FakeAgent:
             for _ in range(3):
                 self._add()
         elif role == "evaluate":
+            self.scored = True  # write the ranking; confirm one open idea (convergent verdict)
             for h in self.hyps:
                 if h["status"] == "open":
                     h["status"] = "confirmed"
@@ -79,8 +104,11 @@ class FakeAgent:
                     break
         elif role == "deepen":
             self._add_sources(session, 2)
+            self._add_arg(req.target_idea, "ЗА")
+            self._add_arg(req.target_idea, "ПРОТИ")
         elif role == "oppose":
             self._add_sources(session, 1)
+            self._add_arg(req.target_idea, "ПРОТИ")
         elif role == "mutate":
             parents = (req.target_idea,) if req.target_idea else ()
             self._add(parents=parents, mutation=req.mutation_type)

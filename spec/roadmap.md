@@ -111,6 +111,13 @@ Add the `chat` layer: a **Claude Haiku** loop whose **only** tool is
 - Haiku loop over the Anthropic HTTP API behind the same mockable model seam; system prompt
   frames the facilitation (no persona).
 - Register the **single tool**; no other tool is exposed.
+- **Session naming (Haiku).** Introduce the Haiku model seam here, first used to **auto-name a
+  session**: on `new`, ask Haiku for a short Ukrainian title from the topic and write it into
+  `input/TOPIC.md` (as a `# <name>` heading above the topic). Behind a mockable `Namer` seam with
+  a **no-API `local_name` fallback** (missing key / no `anthropic` SDK / offline → derive from the
+  topic) so naming never blocks and CI makes no paid call. `--name` still overrides.
+- **`list` shows the session name** next to the folder (reads the TOPIC.md title), not just the
+  timestamped directory; `open` shows it too.
 - **Role detection:** classify the user's reply into a role (Фантазер/Опонент/Алхімік/Дослідник/
   Суддя-замовлення/Ткач-замовлення) or "just steering"; record user moves in the journal;
   `born_from: user` provenance for their ideas.
@@ -122,11 +129,13 @@ Add the `chat` layer: a **Claude Haiku** loop whose **only** tool is
 
 **DoD:** a chat where a substantive reply is classified into a role, the correct complementary
 move launches (or an adversarial one in debate), and results come back in human language; Haiku
-can initiate nothing but `run_brainstorm`.
+can initiate nothing but `run_brainstorm`. A fresh `new` gets a Haiku-generated title in TOPIC.md
+(local fallback when there is no key), and `list`/`open` show it.
 
 **Tests:** unit — role detection (mocked Haiku, labeled replies), complementarity/adversarial
 selection, seed extraction, the single-tool boundary, result-as-data (an output containing
-"do X" is not acted on); integration — a chat turn triggers a mock run and renders the result.
+"do X" is not acted on), **session naming (mock Namer → TOPIC.md title; local fallback with no
+key; `list` renders it)**; integration — a chat turn triggers a mock run and renders the result.
 Mock Haiku + mock agent; no paid APIs.
 
 ### v0.3 — TUI (Textual)

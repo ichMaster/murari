@@ -69,6 +69,15 @@ def test_new_defaults_to_investigate(tmp_path, fake_agent_cls, capsys):
     assert "style: investigate" in capsys.readouterr().out
 
 
+def test_run_prints_usage_totals(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--style", "investigate"], runner=mock, config=cfg)
+    out = capsys.readouterr().out
+    assert "usage:" in out and "$0.06" in out  # totals across the 6 moves
+
+
 # --- run / open on an existing session ---
 
 
@@ -103,6 +112,34 @@ def test_open_lists_hypotheses(tmp_path, fake_agent_cls, capsys):
     assert "H1 [" in out and "H2 [" in out and "H3 [" in out  # ids listed for --target
 
 
+def test_open_shows_scores_after_evaluate(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    # explore's 5th move is the score-only evaluate → writes the ## Ранжування
+    main(["run", str(session.path), "--style", "explore", "--moves", "5"], runner=mock, config=cfg)
+    capsys.readouterr()
+
+    main(["open", str(session.path)], runner=MockAgentRunner({}), config=cfg)
+    out = capsys.readouterr().out
+    assert "★" in out and "чорнова" in out  # unsourced score rendered in the listing
+
+
+def test_open_shows_argument_counts(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    agent = fake_agent_cls()
+    mock = MockAgentRunner(_contracts(), on_run=agent)
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # H1..H3
+    # a debate on H2 writes ## Аргументи (deepen + oppose)
+    main(["run", str(session.path), "--style", "debate", "--target", "H2"], runner=mock, config=cfg)
+    capsys.readouterr()
+
+    main(["open", str(session.path)], runner=MockAgentRunner({}), config=cfg)
+    out = capsys.readouterr().out
+    assert "за /" in out and "проти)" in out  # argument tallies shown per hypothesis
+
+
 def test_run_target_reaches_engine(tmp_path, fake_agent_cls, capsys):
     cfg = _cfg(tmp_path)
     session = create_session(cfg, "тема")
@@ -115,6 +152,43 @@ def test_run_target_reaches_engine(tmp_path, fake_agent_cls, capsys):
     )
     assert rc == 0
     assert any(c.target_idea == "H2" for c in mock.calls if c.role in ("deepen", "oppose"))
+
+
+def test_run_multiple_targets_runs_once_each(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # H1..H3
+    mock.calls.clear()
+
+    rc = main(
+        ["run", str(session.path), "--style", "debate", "--target", "H1,H3"],
+        runner=mock,
+        config=cfg,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "--- target H1 ---" in out and "--- target H3 ---" in out
+    # target-moves ran against both hypotheses (once-per-target batch)
+    hit = {c.target_idea for c in mock.calls if c.role in ("deepen", "oppose")}
+    assert {"H1", "H3"} <= hit
+
+
+def test_run_multiple_targets_validates_up_front(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    main(["run", str(session.path), "--moves", "1"], runner=mock, config=cfg)  # H1..H3
+    mock.calls.clear()
+
+    rc = main(
+        ["run", str(session.path), "--style", "debate", "--target", "H1,H99"],
+        runner=mock,
+        config=cfg,
+    )
+    assert rc == 1
+    assert "unknown target(s) ['H99']" in capsys.readouterr().err
+    assert mock.calls == []  # nothing ran — validated before spending
 
 
 def test_run_unknown_target_returns_1(tmp_path, fake_agent_cls, capsys):
@@ -159,7 +233,7 @@ def test_list_empty(tmp_path, capsys):
 # --- failure hygiene ---
 
 
-def test_run_failure_restores_workspace(tmp_path, fake_agent_cls, capsys):
+def test_run_failure_keeps_completed_moves(tmp_path, fake_agent_cls, capsys):
     cfg = _cfg(tmp_path)
     session = create_session(cfg, "тема")
     # only `generate` has a canned contract → the 2nd move (evaluate) raises RunnerError
@@ -167,5 +241,6 @@ def test_run_failure_restores_workspace(tmp_path, fake_agent_cls, capsys):
     rc = main(["run", str(session.path), "--style", "investigate"], runner=mock, config=cfg)
 
     assert rc == 1
-    assert "workspace restored" in capsys.readouterr().err
-    assert not session.ledger_file.exists()  # the generate move's ledger was rolled back
+    assert "completed moves kept" in capsys.readouterr().err
+    led = session.read_ledger()
+    assert led is not None and len(led.hypotheses) == 3  # the generate move's work is NOT lost

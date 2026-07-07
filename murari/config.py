@@ -20,6 +20,7 @@ ENV_FILE = PROJECT_ROOT / ".env"  # secrets (ANTHROPIC_API_KEY for the Haiku lay
 DEFAULT_RUNS = 6
 DEFAULT_MAX_TURNS = 15
 DEFAULT_MODEL = "claude-opus-4-8"
+DEFAULT_RUN_TIMEOUT = 900  # seconds a single agent move may take before it is killed (15 min)
 
 
 def load_dotenv(path: Path = ENV_FILE) -> None:
@@ -45,6 +46,8 @@ class Config:
     max_turns: int  # --max-turns per move (MURARI_MAX_TURNS)
     model: str  # agent model (MURARI_MODEL)
     home: Path  # base dir (MURARI_HOME)
+    # seconds a single move may take before it is killed (MURARI_RUN_TIMEOUT)
+    run_timeout_s: int = DEFAULT_RUN_TIMEOUT
 
     @property
     def sessions_dir(self) -> Path:
@@ -72,4 +75,5 @@ def load_config() -> Config:
         max_turns=_int_env("MURARI_MAX_TURNS", DEFAULT_MAX_TURNS),
         model=os.environ.get("MURARI_MODEL") or DEFAULT_MODEL,
         home=home_path,
+        run_timeout_s=_int_env("MURARI_RUN_TIMEOUT", DEFAULT_RUN_TIMEOUT),
     )
