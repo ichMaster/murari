@@ -1,3 +1,15 @@
+Version 0.1.2 (2026-07-07)
+---------------------------
+More style refinements from running the CLI on real topics.
+- Shared LEDGER state: scoring in `## Ранжування` (Суддя rates each hypothesis ★1-5 on 4 axes; explore unsourced, investigate sourced) and arguments in `## Аргументи` (Дослідник/Опонент write за/проти per hypothesis with sources -- a debate is now skimmable, not a blob).
+- Weave renders both from the ledger; `open` shows scores and a за/проти tally; a rebuild never drops an idea or its arguments.
+- DOCUMENT.md is written for a reader NEW to the topic (explanatory, not telegraphic); no single winner in any style.
+- explore is divergent (Ф->Ф->А->Ф->С->Т, score-only evaluate).
+- run --target accepts a comma list -> runs the style once per hypothesis.
+- Live per-move progress to stdout + progress.log; engine.log keeps one line per run (styles executed) with time / tokens / cost from the claude envelope.
+- MURARI_RUN_TIMEOUT (default 900s / 15 min) tunes the per-move timeout; a failed move rolls back only itself, keeping completed (paid) moves.
+- Roadmap: session auto-naming via Haiku queued as a v0.2 task.
+
 Version 0.1.1 (2026-07-06)
 ---------------------------
 Style behaviour refinements (found while running the CLI on real topics).
