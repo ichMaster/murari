@@ -108,6 +108,24 @@ Deeper runs are yours explicitly, always over the session topic:
 Before an agent call the chat announces it (`⚙ викликаю брейнсторм-агента…`) and streams the
 engine's live per-move progress into the chat; the reply at the end is a short summary.
 
+## TUI
+
+The three-panel Textual interface (v0.3) — the same chat pipeline with the workspace live on
+screen:
+
+```bash
+pip install -e ".[tui]"
+murari tui --new "тема" --style investigate --depth brief   # or: murari tui [session-dir]
+```
+
+Chat sits on the left; the right column shows the **ledger** (the lineage tree — a `combine`
+child appears under both parents — with ★ scores, «випробувано», за/проти counts and the run
+journal) above the **read-only document** rendered as markdown. The status bar tracks
+style/depth, the current move, runs remaining, and idle/«копає». Runs execute in a worker —
+the chat stays usable while the agent digs, progress streams in live, and both panels refresh
+the moment a move completes. All chat commands work, plus `/b <тема>` (fresh session in
+place) and `/open <session-dir>` (switch to another session).
+
 ## Styles and depth
 
 A style is a named sequence of role moves (Ф=Фантазер С=Суддя Д=Дослідник О=Опонент А=Алхімік

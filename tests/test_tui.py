@@ -274,6 +274,49 @@ async def test_quit_exits_and_leaves_session_dir(tmp_path, fake_agent_cls):
     assert session.path.exists()  # the dir remains after exit
 
 
+# --- MUR-022: the v0.3 DoD as one driven-TUI script ---
+
+
+async def test_v03_dod_script(tmp_path, fake_agent_cls):
+    replies = [
+        HaikuReply(text="Назва Б"),  # /b → the Namer titles the fresh session
+        HaikuReply(text="brainstorm generate"),  # the router for the chat turn
+        HaikuReply(text="steering"),  # detect: nothing to record
+        HaikuReply(text="Фантазер додав ідеї"),  # reflect over the refreshed document
+        HaikuReply(text="прогін завершено"),  # /go brief presentation
+    ]
+    app, first_session, runner, model = _app(tmp_path, fake_agent_cls, replies)
+    async with app.run_test() as pilot:
+        # /b opens a fresh named session
+        await _submit(app, pilot, "/b нова тема для DoD")
+        dod_session = app.chat.session
+        assert dod_session.path != first_session.path
+        # a routed chat turn runs one move — the ledger panel fills
+        await _submit(app, pilot, "накидай ідей про глину")
+        tree = app.query_one("#ledger-tree", Tree)
+        assert len(tree.root.children) >= 3
+        assert any("Фантазер додав ідеї" in ln for ln in app.chat_lines)
+        # a weave-ending run rebuilds the document panel
+        panel = app.query_one("#document-panel", DocumentPanel)
+        assert "ще не написано" in panel.last_markdown
+        await _submit(app, pilot, "/go brief")
+        assert "ще не написано" not in panel.last_markdown  # the document exists now
+        # /style switches scenarios
+        await _submit(app, pilot, "/style debate")
+        assert app.chat.style == "debate"
+        # /open continues the prior session's document/ledger
+        await _submit(app, pilot, f"/open {first_session.path}")
+        assert app.chat.session.path == first_session.path
+        # /quit exits, everything remains on disk
+        inp = app.query_one("#chat-input", Input)
+        inp.focus()
+        inp.value = "/quit"
+        await pilot.press("enter")
+        await pilot.pause()
+    assert dod_session.path.exists() and first_session.path.exists()
+    assert (dod_session.output_dir / "DOCUMENT.md").exists()
+
+
 # --- status-bar inputs ---
 
 

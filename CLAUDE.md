@@ -155,11 +155,17 @@ deepen expensive). User moves are free.
 - `python3 -m pytest tests/` — 12 offline tests: contract v1 + workspace formats, seeded from
   the captured real run in `tests/fixtures/captured-run/`. No paid calls.
 
-## Interface commands (planned)
+## Interface commands (shipped v0.2–v0.3)
 
-`/b <topic>` (fresh session) · `/open <session>` (continue) · `/style <key>`
-(explore/debate/riff/investigate/evolve/premortem) · `/go` (force next move) · `/ledger`
-(state incl. lineage/journal) · `/quit` (exit; session dir remains).
+Two surfaces over the same chat pipeline: `murari chat` (headless REPL, v0.2) and
+`murari tui` (three-panel Textual app, v0.3, needs the `[tui]` extra). Commands:
+`/b <тема>` (fresh session, TUI) · `/open <session>` (switch/continue, TUI) ·
+`/style [key]` (explore/debate/riff/investigate/evolve/premortem) ·
+`/go [стиль] [глибина] [Hxx]` (the only trigger of deep runs; тема = the session topic) ·
+`/ledger` (state incl. lineage/journal) · `/help` · `/quit` (exit; session dir remains).
+Every reply first passes a Haiku router: document talk stays a Haiku conversation over
+DOCUMENT.md; a brainstorm ask records the user's contribution and runs ONE move of the
+routed role (the router can launch nothing deeper).
 
 ## Conventions
 
