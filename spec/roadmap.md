@@ -265,7 +265,6 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 Each is closed no later than the phase where it gets in the way.
 
 - **Trigger policy** (v0.2–v0.3): auto-run a move after every on-topic reply, or only `/go`.
-- **Presentation format** (v0.2): does Ведучий always paraphrase, or do long results go as a raw block.
 - **Panel layout** (v0.3): chat on the left + right column, or three columns.
 - **Continuation surface** (v0.1–v0.3): how a session to continue is chosen — picker, path, or
   `/open <slug>` — and whether continuing writes in place or forks a timestamped copy.
@@ -277,4 +276,7 @@ orders to Ткач); ~~`/steer` command~~ (superseded by role detection); ~~time
 rules~~ (closed v0.2, MUR-015: deviation stays the engine's deterministic rule — two dry moves →
 the agent's `next_role` or the mutate/generate fallback, justification logged — and the chat
 layer surfaces that justification verbatim; Ведучий itself never free-form deviates from the
-template, it only picks the next move by complementarity/state).
+template, it only picks the next move by complementarity/state); ~~presentation format~~
+(closed v0.2, MUR-016: Ведучий **always paraphrases** — a short Ukrainian summary naming sources
+and honest dry runs, with a deterministic no-API fallback; long output never lands raw in chat —
+the document lives in DOCUMENT.md and the raw ledger only behind `/ledger`).

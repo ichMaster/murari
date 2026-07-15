@@ -281,8 +281,12 @@ was started.
 `/go` (force the next move; auto-trigger after a substantive on-topic reply [tentative]) ·
 `/ledger` (current state: hypotheses, lineage, journal) · `/quit` (exit; session dir remains).
 
-Presenting results: when a move completes, Ведучий weaves a summary into the conversation in
-human language; the raw ledger only on `/ledger` [tentative].
+Presenting results (decided v0.2, MUR-016): when a move completes, Ведучий **always
+paraphrases** — a short Ukrainian summary (sources named, dry runs honest, no winner), with a
+deterministic no-API fallback; run data reaches Haiku only as a quoted `<дані>…</дані>` block
+with no tools registered, so output can never originate a dispatch. Long results never go raw
+into chat — the document lives in DOCUMENT.md; the raw ledger only on `/ledger`. Seeds are
+de-identified before any kickoff (emails/phones/addresses/names stripped; hardened in v0.4).
 
 ## Budgets (config)
 
