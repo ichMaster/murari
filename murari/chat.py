@@ -18,6 +18,7 @@ Continuation is explicit: `murari chat <session>` reopens; nothing is pulled in 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable
 
 from murari.config import Config
@@ -40,9 +41,12 @@ from murari.veduchyi import TOOL_NAME, Dispatcher, Refusal, Veduchyi
 _HELP = (
     "команди: /style [ключ] — стиль (без ключа: показати; ключі: "
     + "/".join(sorted(STYLES))
-    + ") · /go [стиль] [глибина] — запустити брейнсторм над темою сесії · "
-    "/ledger — стан гіпотез · /quit — вийти"
+    + ") · /go [стиль] [глибина] [Hxx] — запустити брейнсторм над темою сесії "
+    "(Hxx — прицілити deepen/oppose/mutate у гіпотезу) · /ledger — стан гіпотез · "
+    "/help — ця підказка · /quit — вийти"
 )
+
+_HID = re.compile(r"^[HН]\d+$", re.IGNORECASE)  # accepts both Latin H and Cyrillic Н
 
 
 class ChatSession:
@@ -94,9 +98,14 @@ class ChatSession:
 
     # --- internals ---
 
+    def _announce(self, text: str) -> None:
+        if self.on_progress is not None:
+            self.on_progress(text)
+
     def _launch_move(self, role: str, user_text: str) -> str:
         """One move of `role` — all the router is allowed to launch (deeper runs are /go)."""
         note = f"хід {ROLE_NAMES[role]}а"
+        self._announce(f"⚙ викликаю брейнсторм-агента: {note}…")
         seed = extract_seed(self.session.read_topic(), user_text, note)
         outcome = self.dispatcher.dispatch(
             self.session,
@@ -133,35 +142,42 @@ class ChatSession:
             return self._go(arg)
         if cmd == "/ledger":
             return self._render_ledger()
+        if cmd == "/help":
+            return _HELP
         if cmd == "/quit":
             return ""  # the REPL handles exit; the session dir remains
         return _HELP
 
     def _go(self, arg: str) -> str:
-        """`/go [стиль] [глибина]` — the user's explicit way to run something deeper than
-        the router's single tiny move. The тема is always the session topic; style and depth
-        default to what the chat was started with (`--style`/`--depth`), and any token given
-        here switches that default for the rest of the session."""
+        """`/go [стиль] [глибина] [Hxx]` — the user's explicit way to run something deeper
+        than the router's single tiny move. The тема is always the session topic; style and
+        depth default to what the chat was started with (`--style`/`--depth`), any token
+        given here switches that default, and an H-id pins the single-hypothesis moves
+        (deepen/oppose/mutate) to that hypothesis."""
+        target: str | None = None
         for token in arg.split():
             if token in STYLES:
                 self.style = token
             elif token in DEPTHS:
                 self.depth = token
+            elif _HID.match(token):
+                target = "H" + token[1:]  # normalize a Cyrillic Н to the ledger's Latin H
             else:
-                return f"не зрозумів {token!r}: /go [стиль] [глибина: {'/'.join(DEPTHS)}]"
+                return f"не зрозумів {token!r}: /go [стиль] [глибина: {'/'.join(DEPTHS)}] [Hxx]"
+        tgt = f" →{target}" if target else ""
+        self._announce(f"⚙ викликаю брейнсторм-агента: стиль {self.style}/{self.depth}{tgt}…")
         seed = extract_seed(self.session.read_topic(), "", f"стиль {self.style}")
+        args: dict = {
+            "seed": seed,
+            "role": STYLES[self.style][0],
+            "style_step": self.style,
+            "depth": self.depth,
+        }
+        if target:
+            args["target_idea"] = target
         outcome = self.dispatcher.dispatch(
             self.session,
-            ToolCall(
-                name=TOOL_NAME,
-                arguments={
-                    "seed": seed,
-                    "role": STYLES[self.style][0],
-                    "style_step": self.style,
-                    "depth": self.depth,
-                },
-                id="chat-go",
-            ),
+            ToolCall(name=TOOL_NAME, arguments=args, id="chat-go"),
             on_progress=self.on_progress,
         )
         if isinstance(outcome, Refusal):

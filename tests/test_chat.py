@@ -160,6 +160,47 @@ def test_go_rejects_unknown_token(tmp_path, fake_agent_cls):
     assert runner.calls == []
 
 
+def test_help_command(tmp_path, fake_agent_cls):
+    chat, *_ = _chat(tmp_path, fake_agent_cls, [])
+    out = chat.turn("/help")
+    assert "/go" in out and "/style" in out and "/ledger" in out and "/quit" in out
+
+
+def test_go_with_target_pins_the_hypothesis(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [HaikuReply(text="є ідеї"), HaikuReply(text="дебати про H2")],
+        style="investigate",
+    )
+    chat.turn("/go brief")  # H1..H3 appear
+    out = chat.turn("/go debate tiny H2")  # debate tiny = oppose, pinned to H2
+    req = runner.calls[-1]
+    assert req.role == "oppose" and req.target_idea == "H2"
+    assert "дебати про H2" in out
+
+
+def test_go_with_unknown_target_is_refused(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [])
+    out = chat.turn("/go debate tiny H99")
+    assert "хід відхилено" in out and runner.calls == []
+
+
+def test_agent_call_is_announced_and_streams_progress(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема сесії")
+    runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    model = MockHaikuModel([HaikuReply(text="готово")])
+    progress: list[str] = []
+    chat = ChatSession(
+        cfg, session, runner, model, style="investigate", on_progress=progress.append
+    )
+    chat.turn("/go brief")
+    assert any("викликаю брейнсторм-агента" in ln for ln in progress)  # the announcement
+    assert any("виконую" in ln for ln in progress)  # the engine's live per-move output
+    assert any("готово за" in ln for ln in progress)
+
+
 def test_go_refusal_degrades_to_chat_message(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,

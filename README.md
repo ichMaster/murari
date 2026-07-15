@@ -98,10 +98,15 @@ Deeper runs are yours explicitly, always over the session topic:
 ```
 /go                  # run the current style at the current depth
 /go explore brief    # switch style/depth and run (they stay the new defaults)
+/go debate tiny H2   # an H-id pins deepen/oppose/mutate to that hypothesis
 /style debate        # change the style without running anything
 /ledger              # the hypotheses, journal, and dry-run counter
+/help                # the command list
 /quit                # exit — the session directory remains on disk
 ```
+
+Before an agent call the chat announces it (`⚙ викликаю брейнсторм-агента…`) and streams the
+engine's live per-move progress into the chat; the reply at the end is a short summary.
 
 ## Styles and depth
 
