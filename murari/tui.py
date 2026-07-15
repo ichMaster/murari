@@ -16,6 +16,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -23,7 +24,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Markdown, RichLog, Static, Tree
 from textual.worker import Worker, WorkerState
 
-from murari.chat import _HELP, ChatSession, _format_reply
+from murari.chat import _HELP, ChatSession
 from murari.config import Config
 from murari.haiku import HaikuModel, Namer
 from murari.ledger import Hypothesis, Ledger, LedgerError
@@ -54,6 +55,24 @@ class StatusBar(Static):
         self.update(
             f"стиль {style}/{depth} · хід: {move or '—'} · залишилось ходів: {runs_left} · {state}"
         )
+
+
+def _styled(text: str) -> Text:
+    """Chat-log styling: the user's messages are turquoise with a bold `ти>` prompt; the
+    `murari>` prompt is bold green (the reply text keeps the default color)."""
+    out = Text()
+    for i, line in enumerate(text.splitlines() or [""]):
+        if i:
+            out.append("\n")
+        if line.startswith("ти> "):
+            out.append("ти>", style="bold cyan")
+            out.append(" " + line[4:], style="cyan")
+        elif line.startswith("murari> "):
+            out.append("murari>", style="bold green")
+            out.append(" " + line[8:])
+        else:
+            out.append(line)
+    return out
 
 
 def _node_label(led: Ledger, h: Hypothesis) -> str:
@@ -132,7 +151,7 @@ class MurariApp(App):
     #side-pane { width: 2fr; }
     #chat-pane { height: 1fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
-    #chat-input { dock: bottom; }
+    #chat-input { dock: bottom; height: 3; }
     #ledger-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #document-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #status-bar { dock: bottom; height: 1; background: $surface-lighten-1; }
@@ -258,7 +277,15 @@ class MurariApp(App):
         self.set_status(move=None, digging=False)
         if reply:
             self._write_chat("")
-            self._write_chat(_format_reply(reply))
+            self._write_reply(reply)
+
+    def _write_reply(self, reply: str) -> None:
+        """A chat reply: the bold-green `murari>` prompt, then the body rendered as
+        markdown (chat_lines keeps the plain text for tests)."""
+        self.chat_lines.append("murari> " + reply)
+        log = self.query_one("#chat-log", RichLog)
+        log.write(Text("murari>", style="bold green"))
+        log.write(RichMarkdown(reply))
 
     def _progress_from_thread(self, line: str) -> None:
         """on_progress arrives on the worker thread — marshal it onto the UI thread."""
@@ -272,8 +299,8 @@ class MurariApp(App):
         self.set_status(move=f"{self._dig_label} · {elapsed:.0f}s", digging=True)
 
     def _write_chat(self, line: str) -> None:
-        self.chat_lines.append(line)
-        self.query_one("#chat-log", RichLog).write(line)
+        self.chat_lines.append(line)  # plain text — tests read this, styling is widget-only
+        self.query_one("#chat-log", RichLog).write(_styled(line))
 
     # --- shared surfaces ---
 

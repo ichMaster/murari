@@ -274,6 +274,37 @@ async def test_quit_exits_and_leaves_session_dir(tmp_path, fake_agent_cls):
     assert session.path.exists()  # the dir remains after exit
 
 
+# --- chat-log presentation: colored prompts, markdown replies, 3-line input ---
+
+
+def test_styled_prompts_colors_and_bold():
+    from murari.tui import _styled
+
+    user = _styled("ти> привіт світ")
+    assert user.plain == "ти> привіт світ"
+    styles = [str(span.style) for span in user.spans]
+    assert "bold cyan" in styles[0] and "cyan" in styles[1]  # bold prompt, turquoise message
+    plain = _styled("просто рядок прогресу")
+    assert plain.plain == "просто рядок прогресу" and not plain.spans
+
+
+async def test_reply_renders_markdown_with_green_prompt(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(
+        tmp_path, fake_agent_cls, [HaikuReply(text="**жирний** підсумок")]
+    )
+    async with app.run_test() as pilot:
+        await _submit(app, pilot, "/go brief")
+        assert any(ln == "murari> **жирний** підсумок" for ln in app.chat_lines)
+
+
+async def test_input_is_three_lines_high(tmp_path, fake_agent_cls):
+    app, *_ = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#chat-input", Input)
+        assert inp.region.height == 3
+        await pilot.pause()
+
+
 # --- MUR-022: the v0.3 DoD as one driven-TUI script ---
 
 
