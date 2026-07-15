@@ -13,6 +13,7 @@ without the `[tui]` extra degrades to an install hint while everything else keep
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from rich.text import Text
 from textual import work
@@ -21,10 +22,12 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Markdown, RichLog, Static, Tree
 from textual.worker import Worker, WorkerState
 
-from murari.chat import ChatSession, _format_reply
+from murari.chat import _HELP, ChatSession, _format_reply
 from murari.config import Config
+from murari.haiku import HaikuModel, Namer
 from murari.ledger import Hypothesis, Ledger, LedgerError
-from murari.session import Session
+from murari.runner import AgentRunner
+from murari.session import Session, SessionError, create_session, open_session, titled_topic
 
 
 def runs_remaining(config: Config, session: Session) -> int:
@@ -133,10 +136,14 @@ class MurariApp(App):
     #status-bar { dock: bottom; height: 1; background: $surface-lighten-1; }
     """
 
-    def __init__(self, chat: ChatSession, config: Config) -> None:
+    def __init__(
+        self, chat: ChatSession, config: Config, runner: AgentRunner, model: HaikuModel
+    ) -> None:
         super().__init__()
         self.chat = chat
         self.config = config
+        self.runner = runner  # /b and /open build fresh ChatSessions over the same seams
+        self.model = model
         self.chat_lines: list[str] = []  # everything written to the chat log (tests read this)
         self._busy = False  # one run at a time — a second submit is politely refused
         self._dig_started = 0.0
@@ -157,6 +164,7 @@ class MurariApp(App):
         title = session.read_title()
         name = f" — {title}" if title else ""
         self._write_chat(f"сесія: {session.path.name}{name}")
+        self._write_chat(_HELP + " · /b <тема> — нова сесія · /open <шлях> — продовжити іншу")
         # progress from the worker thread streams into the chat log (announce + engine lines)
         self.chat.on_progress = self._progress_from_thread
         self.chat.veduchyi.on_progress = self._progress_from_thread
@@ -177,11 +185,56 @@ class MurariApp(App):
             self._write_chat("⏳ агент ще копає — зачекай завершення ходу")
             return
         self._write_chat(f"ти> {text}")
+        cmd, _, arg = text.partition(" ")
+        if cmd == "/b":  # a fresh blank session — no implicit cross-session memory
+            self._cmd_b(arg.strip())
+            return
+        if cmd == "/open":  # explicit continuation of another session
+            self._cmd_open(arg.strip())
+            return
         self._busy = True
         self._dig_started = time.monotonic()
         self._dig_label = "копає"
         self.set_status(move=None, digging=True)
         self._run_turn(text)
+
+    # --- session switching (MUR-021): /b and /open re-point every panel ---
+
+    def _cmd_b(self, topic: str) -> None:
+        if not topic:
+            self._write_chat("вкажи тему: /b <тема>")
+            return
+        title = Namer(self.model).name(topic)
+        session = create_session(self.config, titled_topic(title, topic))
+        self._switch_session(session, f"нова сесія: {session.path.name} — {title}")
+
+    def _cmd_open(self, arg: str) -> None:
+        if not arg:
+            self._write_chat("вкажи шлях: /open <session-dir>")
+            return
+        try:
+            session = open_session(Path(arg))
+        except SessionError as e:
+            self._write_chat(f"не відкрилося: {e}")
+            return
+        self._switch_session(session, f"відкрито: {session.path.name}")
+
+    def _switch_session(self, session: Session, note: str) -> None:
+        """A fresh ChatSession over the new workspace (style/depth defaults carry over);
+        panels and the status bar re-point immediately."""
+        self.chat = ChatSession(
+            self.config,
+            session,
+            self.runner,
+            self.model,
+            style=self.chat.style,
+            depth=self.chat.depth,
+        )
+        self.chat.on_progress = self._progress_from_thread
+        self.chat.veduchyi.on_progress = self._progress_from_thread
+        self._write_chat(note)
+        self.refresh_workspace()
+        self.set_status(move=None, digging=False)
 
     @work(thread=True, name="turn", exit_on_error=False)
     def _run_turn(self, text: str) -> str:

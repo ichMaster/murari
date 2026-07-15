@@ -329,7 +329,7 @@ def cmd_tui(
         )
         return 1
     chat = ChatSession(config, session, runner, haiku, style=args.style, depth=args.depth)
-    MurariApp(chat, config).run()
+    MurariApp(chat, config, runner, haiku).run()
     return 0
 
 

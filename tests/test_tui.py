@@ -44,7 +44,7 @@ def _app(tmp_path, fake_agent_cls, replies=(), *, topic="тема сесії", r
     runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
     model = MockHaikuModel(list(replies))
     chat = ChatSession(cfg, session, runner, model, style="investigate")
-    return MurariApp(chat, cfg), session, runner, model
+    return MurariApp(chat, cfg, runner, model), session, runner, model
 
 
 _LEDGER_WITH_JOURNAL = (
@@ -157,8 +157,9 @@ async def test_chat_stays_responsive_during_run(tmp_path, fake_agent_cls):
         agent(req)
 
     runner = MockAgentRunner(_contracts(), on_run=slow_agent)
-    chat = ChatSession(cfg, session, runner, MockHaikuModel([HaikuReply(text="готово")]))
-    app = MurariApp(chat, cfg)
+    model = MockHaikuModel([HaikuReply(text="готово")])
+    chat = ChatSession(cfg, session, runner, model)
+    app = MurariApp(chat, cfg, runner, model)
     async with app.run_test() as pilot:
         inp = app.query_one("#chat-input", Input)
         inp.focus()
@@ -203,6 +204,74 @@ async def test_worker_failure_lands_as_chat_message(tmp_path, fake_agent_cls):
         await pilot.pause()
         assert any("помилка виконання" in ln for ln in app.chat_lines)
         assert "idle" in str(app.query_one("#status-bar", StatusBar).content)
+
+
+# --- MUR-021: commands /b, /open + delegation ---
+
+
+async def _submit(app, pilot, text: str) -> None:
+    inp = app.query_one("#chat-input", Input)
+    inp.focus()
+    inp.value = text
+    await pilot.press("enter")
+    await app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+async def test_b_creates_named_session_and_switches(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls, [HaikuReply(text="Нова назва")])
+    async with app.run_test() as pilot:
+        old_path = app.chat.session.path
+        await _submit(app, pilot, "/b зовсім нова тема")
+        assert app.chat.session.path != old_path  # the whole app switched
+        assert app.chat.session.read_title() == "Нова назва"
+        assert any("нова сесія" in ln for ln in app.chat_lines)
+        journal = str(app.query_one("#ledger-journal", Static).content)
+        assert "LEDGER ще порожній" in journal  # a fresh /b starts blank
+
+
+async def test_open_switches_and_bad_path_keeps_running(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    other = create_session(_cfg(tmp_path), "інша тема")
+    other.ledger_file.write_text(_LEDGER_WITH_JOURNAL, encoding="utf-8")
+    async with app.run_test() as pilot:
+        await _submit(app, pilot, f"/open {other.path}")
+        assert app.chat.session.path == other.path  # explicit continuation
+        tree = app.query_one("#ledger-tree", Tree)
+        assert any("H1 [open]" in str(n.label) for n in tree.root.children)
+        await _submit(app, pilot, "/open /зовсім/не/шлях")
+        assert any("не відкрилося" in ln for ln in app.chat_lines)
+        assert app.chat.session.path == other.path  # unchanged, app alive
+
+
+async def test_chat_commands_delegate_to_chatsession(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        await _submit(app, pilot, "/style debate")
+        assert app.chat.style == "debate"
+        assert any("стиль тепер debate" in ln for ln in app.chat_lines)
+        await _submit(app, pilot, "/help")
+        assert any("/go [стиль]" in ln for ln in app.chat_lines)
+        await _submit(app, pilot, "/wat")  # unknown command → the same help text
+        assert sum("/quit — вийти" in ln for ln in app.chat_lines) >= 2
+
+
+async def test_startup_help_mentions_b_and_open(tmp_path, fake_agent_cls):
+    app, *_ = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        assert any("/b <тема>" in ln and "/open <шлях>" in ln for ln in app.chat_lines)
+        await pilot.pause()
+
+
+async def test_quit_exits_and_leaves_session_dir(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#chat-input", Input)
+        inp.focus()
+        inp.value = "/quit"
+        await pilot.press("enter")
+        await pilot.pause()
+    assert session.path.exists()  # the dir remains after exit
 
 
 # --- status-bar inputs ---
