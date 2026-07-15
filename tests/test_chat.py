@@ -187,6 +187,21 @@ def test_ledger_command_renders_state(tmp_path, fake_agent_cls):
     assert "сухих поспіль:" in out
 
 
+def test_repl_visually_separates_prompt_and_reply(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [HaikuReply(text="document"), HaikuReply(text="перший рядок\nдругий рядок")],
+    )
+    written: list[str] = []
+    prompts: list[str] = []
+    run_repl(chat, ["про що документ?"], written.append, prompt=lambda: prompts.append("ти> "))
+    assert prompts == ["ти> ", "ти> "]  # before the reply and before the EOF read
+    reply = next(ln for ln in written if ln.startswith("murari> "))
+    assert reply == "murari> перший рядок\n        другий рядок"  # continuation indented
+    assert "" in written  # a blank line separates input from the reply
+
+
 def test_repl_quit_leaves_session_on_disk(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [])
     written: list[str] = []

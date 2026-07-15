@@ -281,7 +281,11 @@ def cmd_chat(
     chat = ChatSession(
         config, session, runner, haiku, style=args.style, depth=args.depth, on_progress=print
     )
-    run_repl(chat, sys.stdin, print)
+
+    def _prompt() -> None:  # the input marker, on the same line as what the user types
+        print("\nти> ", end="", flush=True)
+
+    run_repl(chat, sys.stdin, print, prompt=_prompt)
     return 0
 
 

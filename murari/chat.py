@@ -181,13 +181,33 @@ class ChatSession:
         return "\n".join(lines)
 
 
-def run_repl(chat: ChatSession, lines: Iterable[str], write: Callable[[str], None] = print) -> None:
-    """Drive a ChatSession over a line source (stdin or a test list). `/quit` — or EOF —
-    exits; the session directory always remains on disk."""
+def _format_reply(out: str) -> str:
+    """The chat's reply, visually separated from the user's input: a `murari>` marker on
+    the first line, continuation lines indented under it."""
+    lines = out.splitlines() or [""]
+    return "\n".join([f"murari> {lines[0]}", *(f"        {ln}" for ln in lines[1:])])
+
+
+def run_repl(
+    chat: ChatSession,
+    lines: Iterable[str],
+    write: Callable[[str], None] = print,
+    *,
+    prompt: Callable[[], None] | None = None,
+) -> None:
+    """Drive a ChatSession over a line source (stdin or a test list). `prompt` (when given)
+    is called before each read — the CLI uses it to print a `ти>` input marker. `/quit` —
+    or EOF — exits; the session directory always remains on disk."""
     title = chat.session.read_title()
     name = f" — {title}" if title else ""
     write(f"сесія: {chat.session.path.name}{name} (стиль {chat.style}/{chat.depth}); {_HELP}")
-    for raw in lines:
+    it = iter(lines)
+    while True:
+        if prompt is not None:
+            prompt()
+        raw = next(it, None)
+        if raw is None:
+            break
         line = raw.strip()
         if line == "/quit":
             break
@@ -195,5 +215,7 @@ def run_repl(chat: ChatSession, lines: Iterable[str], write: Callable[[str], Non
             continue
         out = chat.turn(line)
         if out:
-            write(out)
+            write("")
+            write(_format_reply(out))
+    write("")
     write(f"сесію збережено: {chat.session.path}")
