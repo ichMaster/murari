@@ -94,23 +94,25 @@ def _node_label(led: Ledger, h: Hypothesis) -> str:
 
 class LedgerPanel(VerticalScroll):
     """The ledger surface: the lineage tree (a `combine` child appears under each parent)
-    with the run journal underneath. Read side only — the panel never writes files."""
+    with a one-line state footer (dry counter / empty / error). The run log lives only in
+    LEDGER.md and behind /ledger — no journal window (removed per user, 2026-07-16).
+    Read side only — the panel never writes files."""
 
     def compose(self) -> ComposeResult:
         yield Tree("LEDGER", id="ledger-tree")
-        yield Static(id="ledger-journal")
+        yield Static(id="ledger-state")
 
     def render_session(self, session: Session) -> None:
         tree = self.query_one("#ledger-tree", Tree)
-        journal = self.query_one("#ledger-journal", Static)
+        state = self.query_one("#ledger-state", Static)
         tree.clear()
         try:
             led = session.read_ledger()
         except LedgerError as e:  # malformed state renders as an error, the app lives on
-            journal.update(f"LEDGER не читається: {e}")
+            state.update(f"LEDGER не читається: {e}")
             return
         if led is None:
-            journal.update("LEDGER ще порожній")
+            state.update("LEDGER ще порожній")
             return
         tree.root.expand()
         nodes: dict[str, list] = {}  # hid → the tree nodes that carry it (combine: several)
@@ -122,9 +124,7 @@ class LedgerPanel(VerticalScroll):
             else:
                 added = [tree.root.add(label, expand=True)]
             nodes[h.id] = added
-        lines = [f"прогін {r.n}: {r.move}({r.executor}) → {r.produced}" for r in led.runs]
-        lines.append(f"сухих поспіль: {led.dry_streak}")
-        journal.update("\n".join(lines))
+        state.update(f"сухих поспіль: {led.dry_streak}")
 
 
 class DocumentPanel(VerticalScroll):
@@ -149,7 +149,8 @@ class MurariApp(App):
     CSS = """
     #document-pane { width: 3fr; }
     #side-pane { width: 2fr; }
-    #chat-pane { height: 1fr; }
+    /* the journal window is gone — its space goes to the chat (ledger 1fr : chat 2fr) */
+    #chat-pane { height: 2fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
     #chat-input { dock: bottom; height: 3; }
     #ledger-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }

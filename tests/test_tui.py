@@ -112,8 +112,8 @@ async def test_ledger_tree_shows_lineage_scores_and_journal(tmp_path, fake_agent
         assert any(lbl.startswith("H9") for lbl in h2_children)  # combine → under BOTH parents
         h1_label = str(roots["H1"].label)
         assert "★3424(дж)" in h1_label and "випробувано:2" in h1_label and "1за/1проти" in h1_label
-        journal = str(app.query_one("#ledger-journal", Static).content)
-        assert "прогін 1: generate(агент)" in journal and "сухих поспіль: 1" in journal
+        journal = str(app.query_one("#ledger-state", Static).content)
+        assert "сухих поспіль: 1" in journal and "прогін" not in journal
         await pilot.pause()
 
 
@@ -136,7 +136,7 @@ async def test_malformed_ledger_renders_error_without_crash(tmp_path, fake_agent
     async with app.run_test() as pilot:
         session.ledger_file.write_text("це не ledger взагалі", encoding="utf-8")
         app.refresh_workspace()
-        journal = str(app.query_one("#ledger-journal", Static).content)
+        journal = str(app.query_one("#ledger-state", Static).content)
         assert "LEDGER не читається" in journal
         assert app.query_one("#chat-input") is not None  # the app is still alive
         await pilot.pause()
@@ -226,7 +226,7 @@ async def test_b_creates_named_session_and_switches(tmp_path, fake_agent_cls):
         assert app.chat.session.path != old_path  # the whole app switched
         assert app.chat.session.read_title() == "Нова назва"
         assert any("нова сесія" in ln for ln in app.chat_lines)
-        journal = str(app.query_one("#ledger-journal", Static).content)
+        journal = str(app.query_one("#ledger-state", Static).content)
         assert "LEDGER ще порожній" in journal  # a fresh /b starts blank
 
 
