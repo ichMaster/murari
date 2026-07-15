@@ -60,7 +60,8 @@ class AnthropicHaikuModel:
     """The real client. Key and SDK are resolved at call time so a keyless environment
     constructs fine and only fails (typed) when actually asked to complete."""
 
-    def __init__(self, config: Config, max_tokens: int = 1024) -> None:
+    def __init__(self, config: Config, max_tokens: int = 2048) -> None:
+        # 2048 output tokens: enough for a summary of a whole large DOCUMENT.md, still cheap
         self.config = config
         self.max_tokens = max_tokens
 

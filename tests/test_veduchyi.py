@@ -253,3 +253,26 @@ def test_conversation_is_grounded_in_document(tmp_path, fake_agent_cls):
     system = haiku.calls[0]["system"]
     assert "DOCUMENT.md" in system and "стан аналізу про глину" in system
     assert "<дані>" in system  # quoted material, not instructions
+
+
+def test_large_document_is_passed_whole(tmp_path, fake_agent_cls):
+    # a realistic big document (~100 KB, twice the size of a real session's) fits entirely
+    cfg, session, runner = _setup(tmp_path, fake_agent_cls)
+    doc = "# ДОКУМЕНТ\n" + ("рядок аналізу про симуляцію\n" * 3600) + "ОСТАННІЙ РЯДОК МАРКЕР\n"
+    assert len(doc) > 100_000
+    session.document_file.write_text(doc, encoding="utf-8")
+    haiku = MockHaikuModel([HaikuReply(text="ок")])
+    Veduchyi(cfg, haiku, runner, session).turn("самарі, будь ласка")
+    system = haiku.calls[0]["system"]
+    assert "ОСТАННІЙ РЯДОК МАРКЕР" in system  # the tail survived — no truncation
+    assert "обрізано" not in system
+
+
+def test_pathological_document_is_truncated_with_marker(tmp_path, fake_agent_cls):
+    cfg, session, runner = _setup(tmp_path, fake_agent_cls)
+    session.document_file.write_text("х" * 400_000, encoding="utf-8")  # beyond the budget
+    haiku = MockHaikuModel([HaikuReply(text="ок")])
+    Veduchyi(cfg, haiku, runner, session).turn("самарі")
+    system = haiku.calls[0]["system"]
+    assert "обрізано" in system
+    assert len(system) < 350_000  # the safety valve held
