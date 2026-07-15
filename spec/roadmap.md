@@ -256,7 +256,7 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | Verified invocation: canon via `--append-system-prompt`; fence/preamble-tolerant parser | ✅ accepted (2026-07-04, v0.0 findings) |
 | Async run + non-blocking chat | 🔸 tentative |
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
-| **Trigger policy**: brainstorm runs launch **only** via `/go [стиль] [глибина]` (тема — сесійна, задана на старті або наявна в reopened сесії); класифікована репліка лише записує хід користувача і планує наступний; Ведучий поза `/go` спілкується по DOCUMENT.md (самарі, обговорення) і сам може запустити щонайбільше один хід однієї ролі (tiny) | ✅ revised (2026-07-15, user decision) |
+| **Trigger policy / turn routing**: кожна репліка проходить окремий Haiku-виклик-класифікатор — `document` (питання по наявному документу/самарі/розмова → ще один виклик Haiku над DOCUMENT.md) або `brainstorm <роль>` (записується внесок користувача і запускається Claude-агент на **один хід** цієї ролі — глибше класифікатор запускати не може); глибокі прогони — лише явною командою `/go [стиль] [глибина]` над темою сесії (тема задається на старті або живе в reopened сесії) | ✅ revised (2026-07-15, user decision) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |
 | Layout: chat on the left + right column (ledger/document) | 🔸 tentative |
 

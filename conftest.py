@@ -39,6 +39,7 @@ class FakeAgent:
         self.scored = False  # set once an evaluate has written the ## Ранжування section
         self.args: list[tuple[str, str, str]] = []  # (hid, side, text) for the ## Аргументи section
         self._loaded = False  # existing workspace state is adopted on the first call
+        self.journal: list[str] = []  # pre-existing `## Прогони` lines survive rebuilds
 
     def _load(self, session: Session) -> None:
         """Adopt whatever is already in the workspace (e.g. user moves recorded by the chat
@@ -63,6 +64,7 @@ class FakeAgent:
         self._n = max((int(h.id[1:]) for h in led.hypotheses), default=0)
         self.scored = bool(led.scores)
         self.args = [(a.hid, a.side.upper(), a.text) for a in led.arguments]
+        self.journal = [r.raw for r in led.runs]
 
     def _add(self, *, status="open", source=None, parents=(), mutation=None) -> str:
         self._n += 1
@@ -90,7 +92,7 @@ class FakeAgent:
             if h["mutation"]:
                 row += f" — mutation: {h['mutation']}"
             lines.append(row)
-        lines += ["", "## Прогони", ""]
+        lines += ["", "## Прогони", *self.journal, ""]
         if self.scored:  # the Суддя's ## Ранжування (sourced iff the hypothesis got a verdict)
             lines.append("## Ранжування")
             for h in self.hyps:

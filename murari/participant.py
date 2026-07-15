@@ -38,6 +38,46 @@ _DETECT_SYSTEM = (
 
 _EMPTY_LEDGER = "# LEDGER\n\n## Гіпотези\n\n## Прогони\n\n## Сухі прогони поспіль: 0\n"
 
+# --- turn routing (revised 2026-07-15) ---------------------------------------
+# Every chat reply is routed by Haiku: a question about the existing document stays a
+# Haiku conversation; a brainstorm ask launches ONE move of the chosen role (tiny) — the
+# classifier may launch nothing deeper; brief/full runs are the user's /go command.
+
+DOCUMENT = "document"
+BRAINSTORM = "brainstorm"
+
+_ROUTE_SYSTEM = (
+    "Вирішуй, що робити з реплікою учасника брейнштормінг-сесії. Відповідай РІВНО одним рядком:\n"
+    "document — якщо це питання чи обговорення вже написаного документа/стану сесії, прохання "
+    "зробити самарі, або просто розмова.\n"
+    "brainstorm <роль> — якщо треба хід брейнсторм-агента (виконається ОДИН хід цієї ролі; "
+    "глибші прогони користувач запускає сам командою /go): роль одна з "
+    "generate/evaluate/deepen/oppose/mutate/weave. Підказки: нову ідею користувача зустрічає "
+    "evaluate чи deepen; «накидай ідей» — generate; «перевір» — evaluate; «чому це провалиться» "
+    "— oppose; «перепиши документ» — weave. Сумніваєшся — document."
+)
+
+
+@dataclass(frozen=True)
+class Route:
+    """Where a chat reply goes: a Haiku conversation over the document, or one agent move."""
+
+    mode: str  # DOCUMENT | BRAINSTORM
+    role: str | None = None
+
+
+def route_turn(model: HaikuModel, reply_text: str) -> Route:
+    """Ask Haiku whether the reply is document talk or a brainstorm ask (one role move).
+    Every doubt or failure routes to the document conversation — the cheap, safe path."""
+    try:
+        reply = model.complete(_ROUTE_SYSTEM, [{"role": "user", "content": reply_text[:2000]}])
+    except Exception:
+        return Route(mode=DOCUMENT)
+    tokens = (reply.text or "").strip().lower().split()
+    if len(tokens) >= 2 and tokens[0] == BRAINSTORM and tokens[1] in USER_ROLES:
+        return Route(mode=BRAINSTORM, role=tokens[1])
+    return Route(mode=DOCUMENT)
+
 
 def detect_role(model: HaikuModel, reply_text: str) -> str:
     """The role the user is playing in `reply_text`, per the strategies table. Low confidence

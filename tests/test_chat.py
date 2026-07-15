@@ -1,6 +1,9 @@
-"""MUR-017 (revised 2026-07-15) — the chat REPL: commands, the /go-only trigger policy,
-and the phase DoD as an integration script. Mock Haiku + MockAgentRunner/FakeAgent — no
-paid calls anywhere.
+"""MUR-017 (revised 2026-07-15) — the chat REPL with the Haiku router.
+
+The flow per reply: one Haiku call classifies (document talk vs a brainstorm ask); document
+talk goes to a second Haiku call grounded in DOCUMENT.md; a brainstorm ask records the
+user's contribution and launches ONE move of the routed role — deeper runs only via
+`/go [стиль] [глибина]`. Mock Haiku + MockAgentRunner/FakeAgent — no paid calls anywhere.
 """
 
 from __future__ import annotations
@@ -54,28 +57,66 @@ def test_unknown_command_prints_help(tmp_path, fake_agent_cls):
     assert "/style" in chat.turn("/wat") and "/go" in chat.turn("/wat")
 
 
-# --- trigger policy (revised): launch ONLY via /go ---
+# --- the router: document talk vs a single routed move ---
 
 
-def test_classified_reply_records_and_plans_without_launching(tmp_path, fake_agent_cls):
-    chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [HaikuReply(text="generate")])
-    out = chat.turn("а ще можна використати X")
-    assert runner.calls == []  # nothing launched — /go is the only trigger
-    assert "записано: твій хід Фантазера" in out and "/go" in out
-    led = session.read_ledger()  # the user's move is already durable state
-    assert led.by_id("H1").status == "open" and led.runs[0].executor == "користувач"
-
-
-def test_bare_go_runs_the_planned_complementary_move(tmp_path, fake_agent_cls):
+def test_document_question_stays_a_haiku_conversation(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,
         fake_agent_cls,
-        [HaikuReply(text="generate"), HaikuReply(text="Суддя оцінив ідеї (джерела в LEDGER)")],
+        [HaikuReply(text="document"), HaikuReply(text="У документі три відкриті гіпотези.")],
     )
-    chat.turn("а ще можна використати X")  # the user played Фантазер
-    out = chat.turn("/go")
-    assert [req.role for req in runner.calls] == ["evaluate"]  # complementary, not duplicate
-    assert "Суддя оцінив ідеї" in out  # a short summary of what was done
+    out = chat.turn("про що зараз документ?")
+    assert out == "У документі три відкриті гіпотези."
+    assert runner.calls == [] and session.read_ledger() is None
+    # the conversational call still exposes exactly the one tool
+    assert model.calls[1]["tools"] == [RUN_BRAINSTORM_TOOL]
+
+
+def test_brainstorm_ask_records_and_runs_one_routed_move(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [
+            HaikuReply(text="brainstorm evaluate"),  # the router picks the agent move
+            HaikuReply(text="generate"),  # detect: the user contributed an idea
+            HaikuReply(text="Суддя оцінив ідеї (джерела в LEDGER)"),  # presentation
+        ],
+    )
+    out = chat.turn("а ще можна використати X")
+    assert [req.role for req in runner.calls] == ["evaluate"]  # exactly one move
+    assert "записано: твій хід Фантазера" in out
+    assert "Суддя оцінив ідеї" in out
+    led = session.read_ledger()
+    assert led.runs[0].executor == "користувач"  # the contribution kept its provenance
+
+
+def test_router_launches_at_most_one_move(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [
+            HaikuReply(text="brainstorm generate"),
+            HaikuReply(text="steering"),  # nothing to record — just run the move
+            HaikuReply(text="Фантазер накидав ідей"),
+        ],
+    )
+    out = chat.turn("накидай ідей")
+    assert [req.role for req in runner.calls] == ["generate"]
+    assert "Фантазер накидав ідей" in out
+
+
+def test_router_doubt_routes_to_document(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [HaikuReply(text="галюн якийсь"), HaikuReply(text="поговорімо")],
+    )
+    assert chat.turn("щось незрозуміле") == "поговорімо"
+    assert runner.calls == []
+
+
+# --- /go: the user's explicit deep run ---
 
 
 def test_go_with_style_and_depth_runs_that_sequence(tmp_path, fake_agent_cls):
@@ -89,7 +130,7 @@ def test_go_with_style_and_depth_runs_that_sequence(tmp_path, fake_agent_cls):
     assert "переказ прогону" in out
 
 
-def test_bare_go_without_plan_runs_current_style_full(tmp_path, fake_agent_cls):
+def test_bare_go_runs_current_style_full(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [HaikuReply(text="готово")])
     chat.turn("/go")
     roles = [req.role for req in runner.calls]
@@ -102,59 +143,28 @@ def test_go_rejects_unknown_token(tmp_path, fake_agent_cls):
     assert runner.calls == []
 
 
-def test_steering_reply_only_converses(tmp_path, fake_agent_cls):
+def test_go_refusal_degrades_to_chat_message(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,
         fake_agent_cls,
-        [HaikuReply(text="steering"), HaikuReply(text="Тема цікава — з чого почнемо?")],
+        [],
+        runs=2,  # brief needs 3 moves → refused before spending
     )
-    out = chat.turn("як гадаєш, з чого почати?")
-    assert out == "Тема цікава — з чого почнемо?"
-    assert runner.calls == [] and session.read_ledger() is None
-    # the conversational path still exposes exactly the one tool
-    assert model.calls[1]["tools"] == [RUN_BRAINSTORM_TOOL]
-
-
-# --- the phase DoD as a script ---
-
-
-def test_debate_reply_plans_adversarially_and_go_runs_it(tmp_path, fake_agent_cls):
-    chat, session, runner, model = _chat(
-        tmp_path,
-        fake_agent_cls,
-        [HaikuReply(text="deepen"), HaikuReply(text="Опонент записав контраргументи")],
-        style="debate",
-    )
-    out = chat.turn("ось стаття, що підтверджує мою позицію")
-    assert "Опонента" in out  # planned: the user defends → the agent will attack
-    out = chat.turn("/go")
-    (req,) = runner.calls
-    assert req.role == "oppose"
-    assert "виграв" not in out.lower() and "переможець" not in out.lower()
-
-
-def test_refusal_degrades_to_chat_message(tmp_path, fake_agent_cls):
-    chat, session, runner, model = _chat(
-        tmp_path,
-        fake_agent_cls,
-        [HaikuReply(text="generate")],
-        runs=0,  # no budget at all → dispatch refuses before spending
-    )
-    chat.turn("а ще можна Y")
-    out = chat.turn("/go")
+    out = chat.turn("/go brief")
     assert "хід відхилено" in out and "бюджет" in out
     assert runner.calls == []
-    assert session.read_ledger() is not None  # the user's own move still landed
+
+
+# --- state & lifecycle ---
 
 
 def test_ledger_command_renders_state(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,
         fake_agent_cls,
-        [HaikuReply(text="generate"), HaikuReply(text="переказ")],
+        [HaikuReply(text="переказ")],
     )
-    chat.turn("а ще можна геотермальні станції")
-    chat.turn("/go")
+    chat.turn("/go investigate brief")
     out = chat.turn("/ledger")
     assert "[open]" in out or "[confirmed]" in out
     assert "сухих поспіль:" in out

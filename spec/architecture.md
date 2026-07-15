@@ -278,10 +278,10 @@ was started.
 `/b <topic>` (fresh blank timestamped session, write `TOPIC.md`, launch the style's first move) ·
 `/open <session>` (reopen an existing session and continue its document) ·
 `/style <key>` (select/change the style: explore/debate/riff/investigate/evolve/premortem) ·
-`/go [стиль] [глибина]` (the **only** trigger of brainstorm runs — revised v0.2 by user
-decision: the тема is the session topic; bare `/go` runs the planned complementary move;
-a classified reply only records and plans; the Ведучий otherwise converses over DOCUMENT.md
-and may self-trigger at most one tiny role move) ·
+`/go [стиль] [глибина]` (the user's explicit deep run over the session topic — revised v0.2:
+every reply first passes a separate Haiku **router** call: `document` → another Haiku call
+converses over DOCUMENT.md; `brainstorm <роль>` → the user's contribution is recorded and the
+Claude agent runs **one move** of that role — the router may launch nothing deeper) ·
 `/ledger` (current state: hypotheses, lineage, journal) · `/quit` (exit; session dir remains).
 
 Presenting results (decided v0.2, MUR-016): when a move completes, Ведучий **always
