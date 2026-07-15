@@ -17,6 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from murari.chat import ChatSession, run_repl
 from murari.config import Config, load_config
 from murari.engine import (
     DEFAULT_DEPTH,
@@ -83,6 +84,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("list", help="list sessions, most recent first")
+
+    chat = sub.add_parser("chat", help="facilitated chat over a session (v0.2, headless REPL)")
+    chat.add_argument("session", nargs="?", default=None, help="existing session to continue")
+    chat.add_argument("--new", dest="new_topic", default=None, help="start a fresh session")
+    chat.add_argument("--name", default=None, help="optional slug/title for --new")
+    chat.add_argument(
+        "--style", default=None, choices=sorted(STYLES), help="style (default: inferred)"
+    )
     return p
 
 
@@ -241,6 +250,27 @@ def cmd_run(
     return rc
 
 
+def cmd_chat(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
+    if args.new_topic:
+        title = args.name or Namer(haiku).name(args.new_topic)
+        session = create_session(config, titled_topic(title, args.new_topic), args.name)
+        print(f"created {session.path} — {title}")
+    elif args.session:
+        try:
+            session = open_session(Path(args.session))
+        except SessionError as e:
+            print(f"cannot open session: {e}", file=sys.stderr)
+            return 1
+    else:
+        print('вкажи сесію або --new "<тема>"', file=sys.stderr)
+        return 1
+    chat = ChatSession(config, session, runner, haiku, style=args.style, on_progress=print)
+    run_repl(chat, sys.stdin, print)
+    return 0
+
+
 def cmd_list(
     args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
 ) -> int:
@@ -254,7 +284,7 @@ def cmd_list(
     return 0
 
 
-_COMMANDS = {"new": cmd_new, "open": cmd_open, "run": cmd_run, "list": cmd_list}
+_COMMANDS = {"new": cmd_new, "open": cmd_open, "run": cmd_run, "list": cmd_list, "chat": cmd_chat}
 
 
 def main(

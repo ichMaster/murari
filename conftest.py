@@ -38,6 +38,31 @@ class FakeAgent:
         self._n = 0
         self.scored = False  # set once an evaluate has written the ## Ранжування section
         self.args: list[tuple[str, str, str]] = []  # (hid, side, text) for the ## Аргументи section
+        self._loaded = False  # existing workspace state is adopted on the first call
+
+    def _load(self, session: Session) -> None:
+        """Adopt whatever is already in the workspace (e.g. user moves recorded by the chat
+        layer, or a prior agent's ledger) so a rebuild never silently drops state."""
+        self._loaded = True
+        if self.hyps or not session.ledger_file.exists():
+            return  # a stateful in-test agent keeps its own state authoritative
+        from murari.ledger import parse_ledger
+
+        led = parse_ledger(session.ledger_file.read_text(encoding="utf-8"))
+        for h in led.hypotheses:
+            self.hyps.append(
+                {
+                    "id": h.id,
+                    "status": h.status,
+                    "text": h.text,
+                    "source": h.source,
+                    "parents": h.parents,
+                    "mutation": h.mutation,
+                }
+            )
+        self._n = max((int(h.id[1:]) for h in led.hypotheses), default=0)
+        self.scored = bool(led.scores)
+        self.args = [(a.hid, a.side.upper(), a.text) for a in led.arguments]
 
     def _add(self, *, status="open", source=None, parents=(), mutation=None) -> str:
         self._n += 1
@@ -100,6 +125,8 @@ class FakeAgent:
 
     def __call__(self, req: RunRequest) -> None:
         session = Session(req.session_dir)
+        if not self._loaded:
+            self._load(session)
         role = req.role
         if role == "generate":
             for _ in range(3):

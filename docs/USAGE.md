@@ -50,6 +50,7 @@ murari run .murari/brainstorm-sessions/session-*-heat --style evolve
 | `murari run <session-dir> [--style K] [--moves N] [--seed J]` | Run one style over an **existing** session (open-and-continue — the ledger grows, it isn't reset). |
 | `murari open <session-dir>` | Print a session's current state (name, topic, ledger summary, whether a document exists) **without running**. |
 | `murari list` | List all sessions, most recent first, each with its name. |
+| `murari chat [<session-dir>] [--new "<тема>"] [--name S] [--style K]` | **Facilitated chat (v0.2)** over a session — the headless stand-in for the v0.3 TUI. A reply classified into a role (Фантазер/Дослідник/Опонент/Алхімік, or a Суддя/Ткач order) is recorded as **your** move (free, `born_from: user`) and auto-launches the complementary agent move (adversarial only in `debate` — no winner); a steering reply just converses. In-chat commands: `/style [key]` · `/go` (force the planned move) · `/ledger` · `/quit` (the session dir remains). |
 
 **Session naming.** On `new`, Haiku (`MURARI_CHAT_MODEL`, metered `ANTHROPIC_API_KEY` from
 `.env`) titles the session in Ukrainian and writes the name as a `# <name>` heading atop

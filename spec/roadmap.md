@@ -256,7 +256,7 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | Verified invocation: canon via `--append-system-prompt`; fence/preamble-tolerant parser | ✅ accepted (2026-07-04, v0.0 findings) |
 | Async run + non-blocking chat | 🔸 tentative |
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
-| Auto-trigger a move after an on-topic reply | 🔸 tentative |
+| **Trigger policy**: a reply classified into a role auto-launches the planned move; steering replies only converse; `/go` always forces the planned move | ✅ accepted (2026-07-15, MUR-017) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |
 | Layout: chat on the left + right column (ledger/document) | 🔸 tentative |
 
@@ -264,7 +264,6 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 
 Each is closed no later than the phase where it gets in the way.
 
-- **Trigger policy** (v0.2–v0.3): auto-run a move after every on-topic reply, or only `/go`.
 - **Panel layout** (v0.3): chat on the left + right column, or three columns.
 - **Continuation surface** (v0.1–v0.3): how a session to continue is chosen — picker, path, or
   `/open <slug>` — and whether continuing writes in place or forks a timestamped copy.
@@ -279,4 +278,6 @@ layer surfaces that justification verbatim; Ведучий itself never free-for
 template, it only picks the next move by complementarity/state); ~~presentation format~~
 (closed v0.2, MUR-016: Ведучий **always paraphrases** — a short Ukrainian summary naming sources
 and honest dry runs, with a deterministic no-API fallback; long output never lands raw in chat —
-the document lives in DOCUMENT.md and the raw ledger only behind `/ledger`).
+the document lives in DOCUMENT.md and the raw ledger only behind `/ledger`); ~~trigger
+policy~~ (closed v0.2, MUR-017 — see the decision register: auto-trigger on a classified reply,
+`/go` always available).
