@@ -34,6 +34,29 @@ STYLES: dict[str, tuple[str, ...]] = {
 }
 DEFAULT_STYLE = "investigate"
 
+# Depth is orthogonal to style: the style says which roles, the depth how many moves. Curated per
+# style (the user's choice). full = the STYLES sequence; brief = 3 moves ending in weave (still a
+# document); tiny = one signature role, no weave (a single-role response the chat can present).
+DEPTHS = ("full", "brief", "tiny")
+DEFAULT_DEPTH = "full"
+
+_BRIEF: dict[str, tuple[str, ...]] = {
+    "investigate": ("generate", "evaluate", "weave"),
+    "explore": ("generate", "mutate", "weave"),
+    "debate": ("deepen", "oppose", "weave"),
+    "riff": ("deepen", "mutate", "weave"),
+    "evolve": ("evaluate", "mutate", "weave"),
+    "premortem": ("oppose", "deepen", "weave"),
+}
+_TINY: dict[str, tuple[str, ...]] = {
+    "investigate": ("evaluate",),
+    "explore": ("generate",),
+    "debate": ("oppose",),
+    "riff": ("mutate",),
+    "evolve": ("mutate",),
+    "premortem": ("oppose",),
+}
+
 _TARGET_MOVES = ("deepen", "oppose", "mutate")
 _MUTATION_CHOICES = ("scale", "invert", "transfer", "combine", "analogy")
 # Per-move budget profiles (architecture.md §Budgets): generate/mutate/weave cheap,
@@ -53,6 +76,19 @@ class EngineError(RuntimeError):
     """Raised on an invariant violation (e.g. a non-weave move touched DOCUMENT.md)."""
 
 
+def sequence_for(style: str, depth: str = DEFAULT_DEPTH) -> tuple[str, ...]:
+    """The move sequence for a (style, depth). Raises EngineError on an unknown style/depth."""
+    if style not in STYLES:
+        raise EngineError(f"unknown style: {style!r}")
+    if depth == "full":
+        return STYLES[style]
+    if depth == "brief":
+        return _BRIEF[style]
+    if depth == "tiny":
+        return _TINY[style]
+    raise EngineError(f"unknown depth: {depth!r}; use one of {DEPTHS}")
+
+
 @dataclass(frozen=True)
 class MoveLog:
     index: int
@@ -70,6 +106,7 @@ class MoveLog:
 class EngineResult:
     style: str
     seed: int
+    depth: str = DEFAULT_DEPTH
     moves: list[MoveLog] = field(default_factory=list)
     stopped: str = "completed"  # "completed" | "budget" | "failed"
     duration_s: float = 0.0  # total wall-clock of the run
@@ -148,19 +185,18 @@ class Engine:
         session,
         style: str = DEFAULT_STYLE,
         *,
+        depth: str = DEFAULT_DEPTH,
         seed: int = 0,
         max_moves: int | None = None,
         target: str | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> EngineResult:
-        if style not in STYLES:
-            raise EngineError(f"unknown style: {style!r}")
+        moves = sequence_for(style, depth)  # validates style + depth
         if target is not None:
             ids = (session.read_ledger() or _empty()).ids()
             if target not in ids:
                 raise EngineError(f"unknown target {target!r}; available: {sorted(ids) or 'none'}")
         rng = random.Random(seed)
-        moves = STYLES[style]
         budget = min(self.config.runs, max_moves if max_moves is not None else self.config.runs)
         total = min(len(moves), budget)  # moves that will actually run — the "N" in "step i/N"
 
@@ -171,7 +207,7 @@ class Engine:
         error = ""
         total_usage = Usage()
         run_start = time.monotonic()
-        self._progress_init(session, style, seed, target, total, on_progress)
+        self._progress_init(session, style, depth, seed, target, total, on_progress)
 
         for i, planned in enumerate(moves):
             if i >= budget:
@@ -267,10 +303,11 @@ class Engine:
 
         run_dt = time.monotonic() - run_start
         self._emit(session, on_progress, f"разом: {run_dt:.0f}s · {_fmt_usage(total_usage)}")
-        self._write_engine_log(session, style, seed, logs, stopped, run_dt, total_usage)
+        self._write_engine_log(session, style, depth, seed, logs, stopped, run_dt, total_usage)
         return EngineResult(
             style=style,
             seed=seed,
+            depth=depth,
             moves=logs,
             stopped=stopped,
             duration_s=run_dt,
@@ -279,15 +316,15 @@ class Engine:
         )
 
     def _progress_init(
-        self, session, style: str, seed: int, target, total: int, on_progress
+        self, session, style: str, depth: str, seed: int, target, total: int, on_progress
     ) -> None:
         """Start a fresh live progress log for this run (progress.log = the current run only)."""
         session.artifacts_dir.mkdir(parents=True, exist_ok=True)
         tgt = f" target={target}" if target else ""
         (session.artifacts_dir / "progress.log").write_text(
-            f"# {style} seed={seed}{tgt} — {total} ходів\n", encoding="utf-8"
+            f"# {style}/{depth} seed={seed}{tgt} — {total} ходів\n", encoding="utf-8"
         )
-        self._emit(session, on_progress, f"стиль {style}: {total} ходів")
+        self._emit(session, on_progress, f"стиль {style}/{depth}: {total} ходів")
 
     def _emit(self, session, on_progress, line: str) -> None:
         """Append a progress line to progress.log (live trace) and to the caller, if watching."""
@@ -300,6 +337,7 @@ class Engine:
         self,
         session,
         style: str,
+        depth: str,
         seed: int,
         logs: list[MoveLog],
         stopped: str,
@@ -311,7 +349,7 @@ class Engine:
         session.artifacts_dir.mkdir(parents=True, exist_ok=True)
         trace = " ".join(f"{m.move}{'*' if m.dry else ''}" for m in logs)
         line = (
-            f"style={style} seed={seed} moves={len(logs)} {stopped} "
+            f"style={style}/{depth} seed={seed} moves={len(logs)} {stopped} "
             f"{duration_s:.0f}s in={usage.billed_input} out={usage.output_tokens} "
             f"${usage.cost_usd:.2f} [{trace}]\n"
         )

@@ -18,7 +18,15 @@ import sys
 from pathlib import Path
 
 from murari.config import Config, load_config
-from murari.engine import DEFAULT_STYLE, STYLES, Engine, EngineError, EngineResult
+from murari.engine import (
+    DEFAULT_DEPTH,
+    DEFAULT_STYLE,
+    DEPTHS,
+    STYLES,
+    Engine,
+    EngineError,
+    EngineResult,
+)
 from murari.ledger import LedgerError
 from murari.runner import AgentRunner, ClaudeCliRunner
 from murari.session import (
@@ -40,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument(
         "--style", default=DEFAULT_STYLE, choices=sorted(STYLES), help="brainstorm style"
     )
+    new.add_argument(
+        "--depth",
+        default=DEFAULT_DEPTH,
+        choices=DEPTHS,
+        help="full (6) / brief (3) / tiny (1 role)",
+    )
     new.add_argument("--moves", type=int, default=None, help="cap moves below MURARI_RUNS")
     new.add_argument("--seed", type=int, default=0, help="RNG seed for mutation/target choices")
 
@@ -50,6 +64,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("session", help="path to an existing session directory")
     run.add_argument(
         "--style", default=DEFAULT_STYLE, choices=sorted(STYLES), help="brainstorm style"
+    )
+    run.add_argument(
+        "--depth",
+        default=DEFAULT_DEPTH,
+        choices=DEPTHS,
+        help="full (6) / brief (3) / tiny (1 role)",
     )
     run.add_argument("--moves", type=int, default=None, help="cap moves below MURARI_RUNS")
     run.add_argument("--seed", type=int, default=0, help="RNG seed for mutation/target choices")
@@ -65,7 +85,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _format_result(session: Session, res: EngineResult) -> str:
-    lines = [f"session: {session.path}", f"style: {res.style}  seed: {res.seed}  ({res.stopped})"]
+    lines = [
+        f"session: {session.path}",
+        f"style: {res.style}/{res.depth}  seed: {res.seed}  ({res.stopped})",
+    ]
     for m in res.moves:
         tgt = f" →{m.target}" if m.target else ""
         mut = f" [{m.mutation_type}]" if m.mutation_type else ""
@@ -92,6 +115,7 @@ def _run_style(
     config: Config,
     runner: AgentRunner,
     style: str,
+    depth: str,
     seed: int,
     moves: int | None,
     target: str | None = None,
@@ -101,7 +125,13 @@ def _run_style(
     engine = Engine(config, runner)
     try:
         res = engine.run_style(
-            session, style, seed=seed, max_moves=moves, target=target, on_progress=print
+            session,
+            style,
+            depth=depth,
+            seed=seed,
+            max_moves=moves,
+            target=target,
+            on_progress=print,
         )
     except (EngineError, LedgerError) as e:  # pre-run: unknown style/target, malformed ledger
         print(f"cannot run: {e}", file=sys.stderr)
@@ -116,7 +146,7 @@ def _run_style(
 def cmd_new(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
     session = create_session(config, args.topic, args.name)
     print(f"created {session.path}")
-    return _run_style(session, config, runner, args.style, args.seed, args.moves)
+    return _run_style(session, config, runner, args.style, args.depth, args.seed, args.moves)
 
 
 def cmd_open(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
@@ -188,7 +218,9 @@ def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> in
     for target in targets:
         if len(targets) > 1:
             print(f"--- target {target} ---")
-        rc |= _run_style(session, config, runner, args.style, args.seed, args.moves, target)
+        rc |= _run_style(
+            session, config, runner, args.style, args.depth, args.seed, args.moves, target
+        )
     return rc
 
 

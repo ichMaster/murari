@@ -23,6 +23,7 @@ from murari.engine import (
     pick_mutation,
     select_partner,
     select_target,
+    sequence_for,
 )
 from murari.ledger import parse_ledger
 from murari.runner import MockAgentRunner, RunRequest
@@ -65,6 +66,46 @@ def test_only_weave_appears_once_at_the_end():
     # weave is the single document-writing move; it must not appear mid-sequence
     for name, seq in STYLES.items():
         assert seq.count("weave") == 1, f"{name} weaves more than once"
+
+
+# --- depth (full / brief / tiny) ---
+
+
+def test_sequence_for_full_is_the_style():
+    assert sequence_for("investigate", "full") == STYLES["investigate"]
+    assert sequence_for("explore", "brief") == ("generate", "mutate", "weave")  # user's Ф→А→Т
+    assert sequence_for("debate", "tiny") == ("oppose",)
+
+
+def test_brief_is_three_ending_in_weave_tiny_is_one_role():
+    for style in STYLES:
+        brief = sequence_for(style, "brief")
+        assert len(brief) == 3 and brief[-1] == "weave"  # brief still writes a document
+        tiny = sequence_for(style, "tiny")
+        assert len(tiny) == 1 and tiny[0] != "weave"  # one role, no weave
+
+
+def test_sequence_for_unknown_depth_raises():
+    with pytest.raises(EngineError, match="unknown depth"):
+        sequence_for("investigate", "huge")
+
+
+def test_run_style_brief_runs_three_moves(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    res = Engine(cfg, mock).run_style(session, "investigate", depth="brief", seed=0)
+    assert [m.move for m in res.moves] == ["generate", "evaluate", "weave"]
+    assert res.depth == "brief" and session.read_document() is not None
+
+
+def test_run_style_tiny_is_one_role_no_document(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    res = Engine(cfg, mock).run_style(session, "explore", depth="tiny", seed=0)
+    assert [m.move for m in res.moves] == ["generate"]  # a single role
+    assert session.read_document() is None  # tiny doesn't weave
 
 
 def test_explore_is_divergent():

@@ -84,6 +84,11 @@ A style is a named sequence of moves — the session scenario. Ф=Фантазе
 Styles are templates, not rails: Ведучий/scheduler may deviate with justification based on
 LEDGER state. Style can change mid-session.
 
+**Depth** is orthogonal to style (style = which roles, depth = how many moves), curated per style:
+`full` (the 6-move sequence), `brief` (3 moves, still ending in weave → a document), `tiny` (one
+signature role, no weave — a single-role response). The chat picks the depth for a shorter call or
+a one-role reply (`run --depth full|brief|tiny`; a v0.2 `run_brainstorm` gains a `depth` arg).
+
 The **weave** move is style-shaped (kickoff layer, `runner.build_prompt`): in the divergent /
 no-winner styles (`explore`, `debate`) Ткач writes DOCUMENT.md as a **catalog** — every idea as
 its own entry with «за/проти», no winner and no bottom-line verdict; in the convergent styles

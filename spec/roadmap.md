@@ -105,7 +105,9 @@ with the v2 re-pin. **No paid APIs in CI** (one optional real smoke run, by hand
 seeds, launches the right moves — with exactly one tool.
 
 Add the `chat` layer: a **Claude Haiku** loop whose **only** tool is
-`run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?)`. Depends on: v0.1.
+`run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?, depth?)` — `depth` is
+`full`/`brief`/`tiny` (already in the engine/CLI), letting the chat make a shorter call or reply in
+a single role. Depends on: v0.1.
 
 **Tasks:**
 - Haiku loop over the Anthropic HTTP API behind the same mockable model seam; system prompt

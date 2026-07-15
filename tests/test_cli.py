@@ -69,6 +69,21 @@ def test_new_defaults_to_investigate(tmp_path, fake_agent_cls, capsys):
     assert "style: investigate" in capsys.readouterr().out
 
 
+def test_run_depth_brief_runs_three_moves(tmp_path, fake_agent_cls, capsys):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    rc = main(
+        ["run", str(session.path), "--style", "investigate", "--depth", "brief"],
+        runner=mock,
+        config=cfg,
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "style: investigate/brief" in out
+    assert [c.role for c in mock.calls] == ["generate", "evaluate", "weave"]
+
+
 def test_run_prints_usage_totals(tmp_path, fake_agent_cls, capsys):
     cfg = _cfg(tmp_path)
     session = create_session(cfg, "тема")

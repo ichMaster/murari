@@ -54,6 +54,9 @@ murari run .murari/brainstorm-sessions/session-*-heat --style evolve
 **Options**
 
 - `--style` — one of the six styles below (default **`investigate`**).
+- `--depth` — how many moves: **`full`** (the 6-move sequence, default), **`brief`** (3 moves,
+  still ends in a document), **`tiny`** (a single signature role, no document). See the depth
+  table under **Styles**.
 - `--moves N` — cap the run at `N` moves (never above `MURARI_RUNS`).
 - `--seed J` — the RNG seed for mutation types and `combine` partners; the **same seed replays the
   same choices** (randomness lives in the orchestrator, never the model). Default `0`.
@@ -146,6 +149,22 @@ pin with `run --target Hxx`.
 Styles are templates, not rails: after **two dry moves in a row** the engine deviates — to the
 agent's suggested `next_role`, or a fallback (mutate the survivors, else generate) — and logs the
 deviation with its justification.
+
+**Depth** (`--depth`) is orthogonal to style — the style says *which* roles, the depth *how many*
+moves. Curated per style:
+
+| Style | `full` (default) | `brief` | `tiny` |
+|---|---|---|---|
+| investigate | Ф → С → Д → С → О → Т | Ф → С → Т | С |
+| explore | Ф → Ф → А → Ф → С → Т | Ф → А → Т | Ф |
+| debate | Д → О → Д → О → С → Т | Д → О → Т | О |
+| riff | Д → А → Ф → А → С → Т | Д → А → Т | А |
+| evolve | Ф → С → А → С → А → Т | С → А → Т | А |
+| premortem | О → О → Д → С → Т | О → Д → Т | О |
+
+`brief` always ends in `weave`, so you still get a document; `tiny` is a **single role** (no
+weave) — a one-role response (its output lands in the ledger). Example: `run <dir> --style debate
+--depth tiny --target H2` = just the Опонент's counter-arguments on H2.
 
 The move behaviour is **style-shaped**: in the divergent / no-winner styles (`explore`, `debate`)
 the Ткач writes `DOCUMENT.md` as a **catalogue** — every idea with its «за/проти», no winner and

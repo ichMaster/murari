@@ -241,6 +241,12 @@ def test_parse_envelope_missing_result_raises():
         _parse_envelope(json.dumps({"type": "result"}))
 
 
+def test_parse_envelope_max_turns_reports_subtype_and_hint():
+    env = {"type": "result", "subtype": "error_max_turns", "num_turns": 15}
+    with pytest.raises(RunnerError, match="error_max_turns.*MURARI_MAX_TURNS"):
+        _parse_envelope(json.dumps(env))
+
+
 def test_parse_envelope_is_error_raises():
     with pytest.raises(RunnerError):
         _parse_envelope(json.dumps({"is_error": True, "result": "API Error: ..."}))

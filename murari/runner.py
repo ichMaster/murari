@@ -280,8 +280,15 @@ def _parse_envelope(stdout: str) -> dict:
         env = json.loads(stdout)
     except json.JSONDecodeError as e:
         raise RunnerError(f"run output is not JSON: {e}") from e
-    if not isinstance(env, dict) or "result" not in env:
-        raise RunnerError("run envelope missing 'result'")
+    if not isinstance(env, dict):
+        raise RunnerError("run envelope is not a JSON object")
+    if "result" not in env:
+        # Claude Code omits `result` when the run ends on an error subtype (no final text) —
+        # most often error_max_turns: the move used all --max-turns before emitting the contract.
+        subtype = env.get("subtype") or env.get("type") or "?"
+        turns = env.get("num_turns")
+        hint = " — raise MURARI_MAX_TURNS" if subtype == "error_max_turns" else ""
+        raise RunnerError(f"run ended without a result (subtype={subtype}, turns={turns}){hint}")
     if env.get("is_error"):
         raise RunnerError(f"agent reported error: {str(env.get('result'))[:200]}")
     try:
