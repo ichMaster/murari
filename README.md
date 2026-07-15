@@ -118,9 +118,9 @@ pip install -e ".[tui]"
 murari tui --new "тема" --style investigate --depth brief   # or: murari tui [session-dir]
 ```
 
-Chat sits on the left; the right column shows the **ledger** (the lineage tree — a `combine`
-child appears under both parents — with ★ scores, «випробувано», за/проти counts and the run
-journal) above the **read-only document** rendered as markdown. The status bar tracks
+The **read-only document** (markdown) takes the big left surface; the right column shows the
+**ledger** (the lineage tree — a `combine` child appears under both parents — with ★ scores,
+«випробувано», за/проти counts and the run journal) above the chat. The status bar tracks
 style/depth, the current move, runs remaining, and idle/«копає». Runs execute in a worker —
 the chat stays usable while the agent digs, progress streams in live, and both panels refresh
 the moment a move completes. All chat commands work, plus `/b <тема>` (fresh session in

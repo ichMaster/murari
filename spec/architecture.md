@@ -75,8 +75,9 @@ edit DOCUMENT.md directly in v0 — document wishes are orders to Ткач via c
 Three panels: **chat**; **ledger** (hypotheses with statuses, lineage and the run journal);
 **working document**. Status bar: current **style**, current **role/move**, runs remaining.
 Panels re-read workspace files when a run completes; async so the chat stays live.
-Layout (decided v0.3, MUR-018): chat left; right column split — ledger top, document below;
-status bar docked at the bottom. `murari tui` needs the optional `[tui]` extra (`textual`);
+Layout (decided v0.3, revised by user): the working document left (the deliverable gets the
+big surface); right column split — ledger top, chat below; status bar docked at the bottom.
+`murari tui` needs the optional `[tui]` extra (`textual`);
 without it the command degrades to an install hint and nothing else imports textual.
 DOCUMENT panel is **read-only** for the user in v0.
 

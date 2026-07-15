@@ -258,7 +258,7 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
 | **Trigger policy / turn routing**: кожна репліка проходить окремий Haiku-виклик-класифікатор — `document` (питання по наявному документу/самарі/розмова → ще один виклик Haiku над DOCUMENT.md) або `brainstorm <роль>` (записується внесок користувача і запускається Claude-агент на **один хід** цієї ролі — глибше класифікатор запускати не може); глибокі прогони — лише явною командою `/go [стиль] [глибина]` над темою сесії (тема задається на старті або живе в reopened сесії) | ✅ revised (2026-07-15, user decision) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |
-| Layout: chat on the left + right column — ledger on top, document below; status bar at the bottom | ✅ accepted (2026-07-16, MUR-018) |
+| Layout: the working document on the left (the deliverable gets the big surface) + right column — ledger on top, chat below; status bar at the bottom | ✅ revised (2026-07-16, user decision) |
 
 ## Open questions
 

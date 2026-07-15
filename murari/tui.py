@@ -1,8 +1,9 @@
 """murari — the Textual TUI (v0.3): three panels over one session workspace.
 
-Layout (decided v0.3, closes the roadmap open question): **chat on the left** (log + input);
-**right column split** — ledger on top, the working document below; a status bar at the
-bottom with style/depth, the current move, runs remaining, and idle/«копає». The TUI only
+Layout (decided v0.3, revised 2026-07-16 per user): the **working document on the left** —
+the deliverable gets the big surface; **right column split** — ledger on top, chat (log +
+input) below; a status bar at the bottom with style/depth, the current move, runs remaining,
+and idle/«копає». The TUI only
 *reads* the workspace and drives the existing v0.2 `ChatSession` — no new seams: every run
 still passes the single-tool boundary, and the document stays read-only to the user.
 
@@ -127,8 +128,9 @@ class MurariApp(App):
     """The three-panel murari interface over one `ChatSession`."""
 
     CSS = """
-    #chat-pane { width: 3fr; }
+    #document-pane { width: 3fr; }
     #side-pane { width: 2fr; }
+    #chat-pane { height: 1fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
     #chat-input { dock: bottom; }
     #ledger-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
@@ -151,12 +153,13 @@ class MurariApp(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            with Vertical(id="chat-pane"):
-                yield RichLog(id="chat-log", wrap=True, markup=False)
-                yield Input(placeholder="ти> …", id="chat-input")
+            with Vertical(id="document-pane"):
+                yield DocumentPanel(id="document-panel")
             with Vertical(id="side-pane"):
                 yield LedgerPanel(id="ledger-panel")
-                yield DocumentPanel(id="document-panel")
+                with Vertical(id="chat-pane"):
+                    yield RichLog(id="chat-log", wrap=True, markup=False)
+                    yield Input(placeholder="ти> …", id="chat-input")
         yield StatusBar(id="status-bar")
 
     def on_mount(self) -> None:
