@@ -21,7 +21,9 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Input, Markdown, RichLog, Static, Tree
+from textual.events import Key
+from textual.message import Message
+from textual.widgets import Markdown, RichLog, Static, TextArea, Tree
 from textual.worker import Worker, WorkerState
 
 from murari.chat import _HELP, ChatSession
@@ -43,6 +45,30 @@ def runs_remaining(config: Config, session: Session) -> int:
         return config.runs
     agent_moves = sum(1 for r in led.runs if r.executor == "агент")
     return max(0, config.runs - agent_moves)
+
+
+class ChatInput(TextArea):
+    """A real three-line input (the user's ask): Enter submits, Ctrl+J inserts a newline."""
+
+    class Submitted(Message):
+        def __init__(self, value: str) -> None:
+            self.value = value
+            super().__init__()
+
+    async def _on_key(self, event: Key) -> None:
+        if event.key == "enter":
+            event.stop()
+            event.prevent_default()
+            text = self.text
+            self.load_text("")
+            self.post_message(self.Submitted(text))
+            return
+        if event.key == "ctrl+j":  # explicit newline inside the three-line field
+            event.stop()
+            event.prevent_default()
+            self.insert("\n")
+            return
+        await super()._on_key(event)
 
 
 class StatusBar(Static):
@@ -152,7 +178,8 @@ class MurariApp(App):
     /* the journal window is gone — its space goes to the chat (ledger 1fr : chat 2fr) */
     #chat-pane { height: 2fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
-    #chat-input { dock: bottom; height: 3; }
+    /* the input window is exactly three rows high — a real multiline field, no border */
+    #chat-input { dock: bottom; height: 3; border: none; }
     #ledger-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #document-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #status-bar { dock: bottom; height: 1; background: $surface-lighten-1; }
@@ -179,7 +206,7 @@ class MurariApp(App):
                 yield LedgerPanel(id="ledger-panel")
                 with Vertical(id="chat-pane"):
                     yield RichLog(id="chat-log", wrap=True, markup=False)
-                    yield Input(placeholder="ти> …", id="chat-input")
+                    yield ChatInput(id="chat-input")
         yield StatusBar(id="status-bar")
 
     def on_mount(self) -> None:
@@ -196,9 +223,8 @@ class MurariApp(App):
 
     # --- async runs (MUR-020): the chat stays live while the agent digs ---
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         text = event.value.strip()
-        event.input.value = ""
         if not text:
             return
         if text == "/quit":

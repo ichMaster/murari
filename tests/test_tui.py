@@ -24,7 +24,7 @@ from murari.config import Config
 from murari.haiku import HaikuReply, MockHaikuModel
 from murari.runner import MockAgentRunner
 from murari.session import create_session, titled_topic
-from murari.tui import DocumentPanel, MurariApp, StatusBar, runs_remaining
+from murari.tui import ChatInput, DocumentPanel, MurariApp, StatusBar, runs_remaining
 
 FIX = Path(__file__).parent / "fixtures" / "contract-v2"
 _ALL_ROLES = ("generate", "evaluate", "deepen", "oppose", "mutate", "weave")
@@ -126,8 +126,8 @@ async def test_document_panel_is_readonly_markdown(tmp_path, fake_agent_cls):
         app.refresh_workspace()
         assert "**стан** аналізу" in panel.last_markdown
         # read-only pinned: the document surface contains no input-capable widget
-        assert not panel.query(Input) and not panel.query("TextArea")
-        assert len(app.query(Input)) == 1  # the only Input in the app is the chat input
+        assert not panel.query(Input) and not panel.query(ChatInput)
+        assert len(app.query(ChatInput)) == 1  # the only text entry lives in the chat pane
         await pilot.pause()
 
 
@@ -161,9 +161,9 @@ async def test_chat_stays_responsive_during_run(tmp_path, fake_agent_cls):
     chat = ChatSession(cfg, session, runner, model)
     app = MurariApp(chat, cfg, runner, model)
     async with app.run_test() as pilot:
-        inp = app.query_one("#chat-input", Input)
+        inp = app.query_one("#chat-input", ChatInput)
         inp.focus()
-        inp.value = "/go brief"
+        inp.load_text("/go brief")
         await pilot.press("enter")
         for _ in range(200):  # wait until the worker actually reached the agent
             if started.is_set():
@@ -173,7 +173,7 @@ async def test_chat_stays_responsive_during_run(tmp_path, fake_agent_cls):
         bar = str(app.query_one("#status-bar", StatusBar).content)
         assert "копає" in bar  # digging state announced
         # the input is still alive: a second submit is politely refused, nothing queues
-        inp.value = "а ще ідея"
+        inp.load_text("а ще ідея")
         await pilot.press("enter")
         assert any("зачекай" in ln for ln in app.chat_lines)
         assert len(runner.calls) <= 3  # only the /go brief moves — no second dispatch
@@ -196,9 +196,9 @@ async def test_worker_failure_lands_as_chat_message(tmp_path, fake_agent_cls):
             raise RuntimeError("бум")
 
         app.chat.turn = boom  # simulate an unexpected pipeline crash
-        inp = app.query_one("#chat-input", Input)
+        inp = app.query_one("#chat-input", ChatInput)
         inp.focus()
-        inp.value = "щось"
+        inp.load_text("щось")
         await pilot.press("enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
@@ -210,9 +210,9 @@ async def test_worker_failure_lands_as_chat_message(tmp_path, fake_agent_cls):
 
 
 async def _submit(app, pilot, text: str) -> None:
-    inp = app.query_one("#chat-input", Input)
+    inp = app.query_one("#chat-input", ChatInput)
     inp.focus()
-    inp.value = text
+    inp.load_text(text)
     await pilot.press("enter")
     await app.workers.wait_for_complete()
     await pilot.pause()
@@ -266,9 +266,9 @@ async def test_startup_help_mentions_b_and_open(tmp_path, fake_agent_cls):
 async def test_quit_exits_and_leaves_session_dir(tmp_path, fake_agent_cls):
     app, session, runner, model = _app(tmp_path, fake_agent_cls)
     async with app.run_test() as pilot:
-        inp = app.query_one("#chat-input", Input)
+        inp = app.query_one("#chat-input", ChatInput)
         inp.focus()
-        inp.value = "/quit"
+        inp.load_text("/quit")
         await pilot.press("enter")
         await pilot.pause()
     assert session.path.exists()  # the dir remains after exit
@@ -300,7 +300,7 @@ async def test_reply_renders_markdown_with_green_prompt(tmp_path, fake_agent_cls
 async def test_input_is_three_lines_high(tmp_path, fake_agent_cls):
     app, *_ = _app(tmp_path, fake_agent_cls)
     async with app.run_test() as pilot:
-        inp = app.query_one("#chat-input", Input)
+        inp = app.query_one("#chat-input", ChatInput)
         assert inp.region.height == 3
         await pilot.pause()
 
@@ -339,9 +339,9 @@ async def test_v03_dod_script(tmp_path, fake_agent_cls):
         await _submit(app, pilot, f"/open {first_session.path}")
         assert app.chat.session.path == first_session.path
         # /quit exits, everything remains on disk
-        inp = app.query_one("#chat-input", Input)
+        inp = app.query_one("#chat-input", ChatInput)
         inp.focus()
-        inp.value = "/quit"
+        inp.load_text("/quit")
         await pilot.press("enter")
         await pilot.pause()
     assert dod_session.path.exists() and first_session.path.exists()
