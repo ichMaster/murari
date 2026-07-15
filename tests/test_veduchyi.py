@@ -208,3 +208,48 @@ def test_result_payload_is_plain_data(tmp_path, fake_agent_cls):
     payload = result_payload(res)
     assert json.dumps(payload)  # serializable, quoted material for the tool_result
     assert payload["stopped"] == "completed" and payload["error"] is None
+
+
+# --- revised 2026-07-15: self-initiated calls are tiny-only; conversation covers the doc ---
+
+
+def test_self_initiated_deep_run_is_refused(tmp_path, fake_agent_cls):
+    cfg, session, runner = _setup(tmp_path, fake_agent_cls)
+    haiku = MockHaikuModel(
+        [
+            HaikuReply(tool_call=_call(seed="s", role="generate", depth="full")),
+            HaikuReply(text="добре, тоді лише один хід"),
+        ]
+    )
+    v = Veduchyi(cfg, haiku, runner, session)
+    assert v.turn("проженемо все") == "добре, тоді лише один хід"
+    assert runner.calls == []  # deep runs belong to the user's /go
+    tool_result = haiku.calls[1]["messages"][-1]["content"][0]["content"]
+    assert "/go" in tool_result
+
+
+def test_self_initiated_tiny_move_is_allowed(tmp_path, fake_agent_cls):
+    cfg, session, runner = _setup(tmp_path, fake_agent_cls)
+    haiku = MockHaikuModel(
+        [
+            # tiny runs the style's signature role (explore → Фантазер)
+            HaikuReply(
+                tool_call=_call(seed="s", role="generate", depth="tiny", style_step="explore")
+            ),
+            HaikuReply(text="додав ідей"),
+        ]
+    )
+    v = Veduchyi(cfg, haiku, runner, session)
+    assert v.turn("накинь щось від себе") == "додав ідей"
+    assert [req.role for req in runner.calls] == ["generate"]  # one signature move
+
+
+def test_conversation_is_grounded_in_document(tmp_path, fake_agent_cls):
+    cfg, session, runner = _setup(tmp_path, fake_agent_cls)
+    session.document_file.write_text("# ДОКУМЕНТ\nстан аналізу про глину\n", encoding="utf-8")
+    haiku = MockHaikuModel([HaikuReply(text="У документі йдеться про глину.")])
+    v = Veduchyi(cfg, haiku, runner, session)
+    v.turn("про що зараз документ?")
+    system = haiku.calls[0]["system"]
+    assert "DOCUMENT.md" in system and "стан аналізу про глину" in system
+    assert "<дані>" in system  # quoted material, not instructions

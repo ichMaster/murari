@@ -256,7 +256,7 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | Verified invocation: canon via `--append-system-prompt`; fence/preamble-tolerant parser | ✅ accepted (2026-07-04, v0.0 findings) |
 | Async run + non-blocking chat | 🔸 tentative |
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
-| **Trigger policy**: a reply classified into a role auto-launches the planned move; steering replies only converse; `/go` always forces the planned move | ✅ accepted (2026-07-15, MUR-017) |
+| **Trigger policy**: brainstorm runs launch **only** via `/go [стиль] [глибина]` (тема — сесійна, задана на старті або наявна в reopened сесії); класифікована репліка лише записує хід користувача і планує наступний; Ведучий поза `/go` спілкується по DOCUMENT.md (самарі, обговорення) і сам може запустити щонайбільше один хід однієї ролі (tiny) | ✅ revised (2026-07-15, user decision) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |
 | Layout: chat on the left + right column (ledger/document) | 🔸 tentative |
 
@@ -279,5 +279,6 @@ template, it only picks the next move by complementarity/state); ~~presentation 
 (closed v0.2, MUR-016: Ведучий **always paraphrases** — a short Ukrainian summary naming sources
 and honest dry runs, with a deterministic no-API fallback; long output never lands raw in chat —
 the document lives in DOCUMENT.md and the raw ledger only behind `/ledger`); ~~trigger
-policy~~ (closed v0.2, MUR-017 — see the decision register: auto-trigger on a classified reply,
-`/go` always available).
+policy~~ (closed v0.2, revised same day by user decision — see the decision register: launch
+only via `/go [стиль] [глибина]`; the Ведучий converses over DOCUMENT.md and self-triggers at
+most a single tiny role move).

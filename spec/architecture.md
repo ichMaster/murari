@@ -278,8 +278,10 @@ was started.
 `/b <topic>` (fresh blank timestamped session, write `TOPIC.md`, launch the style's first move) ·
 `/open <session>` (reopen an existing session and continue its document) ·
 `/style <key>` (select/change the style: explore/debate/riff/investigate/evolve/premortem) ·
-`/go` (force the planned move; decided v0.2, MUR-017: a reply classified into a role
-auto-launches the planned move, steering replies only converse) ·
+`/go [стиль] [глибина]` (the **only** trigger of brainstorm runs — revised v0.2 by user
+decision: the тема is the session topic; bare `/go` runs the planned complementary move;
+a classified reply only records and plans; the Ведучий otherwise converses over DOCUMENT.md
+and may self-trigger at most one tiny role move) ·
 `/ledger` (current state: hypotheses, lineage, journal) · `/quit` (exit; session dir remains).
 
 Presenting results (decided v0.2, MUR-016): when a move completes, Ведучий **always

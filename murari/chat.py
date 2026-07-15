@@ -4,13 +4,15 @@ One facilitated turn = reply → detect the user's role → record the user move
 provenance-marked) → plan the complementary agent move (adversarial only in debate) →
 dispatch through the single-tool boundary → present the result in Ukrainian.
 
-Trigger policy (open question closed for v0.2): a reply classified into a role
-**auto-launches** the planned move — that's the facilitation contract of the DoD; a
-steering reply only converses (Ведучий may still decide to call the tool itself), and
-`/go` always forces the planned move. Engine failures degrade to a chat message — the
-workspace is never corrupted (the engine rolls back only the failed move).
+Trigger policy (revised 2026-07-15 per user decision): brainstorm runs launch **only** on
+`/go [стиль] [глибина]` — the тема is always the session topic (set at start, or carried by
+the reopened session). A classified reply records the user's move and plans the next agent
+move, but never launches it; bare `/go` runs that planned move (or, with none pending, the
+current style at full depth). The Ведучий converses the rest of the time — grounded in
+DOCUMENT.md (summaries, discussion) — and may itself trigger at most a single tiny role
+move. Engine failures degrade to a chat message; the workspace is never corrupted.
 
-Commands: /style [key] · /go · /ledger · /quit (the session dir remains on disk).
+Commands: /style [key] · /go [стиль] [глибина] · /ledger · /quit (the session dir remains).
 Continuation is explicit: `murari chat <session>` reopens; nothing is pulled in silently.
 """
 
@@ -19,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from murari.config import Config
-from murari.engine import STYLES, EngineResult
+from murari.engine import DEPTHS, STYLES, EngineResult
 from murari.haiku import HaikuError, HaikuModel, ToolCall
 from murari.ledger import LedgerError, parse_ledger
 from murari.participant import STEERING, detect_role, record_user_move
@@ -32,7 +34,8 @@ from murari.veduchyi import TOOL_NAME, Dispatcher, Refusal, Veduchyi
 _HELP = (
     "команди: /style [ключ] — стиль (без ключа: показати; ключі: "
     + "/".join(sorted(STYLES))
-    + ") · /go — запустити запланований хід · /ledger — стан гіпотез · /quit — вийти"
+    + ") · /go [стиль] [глибина] — запустити брейнсторм над темою сесії · "
+    "/ledger — стан гіпотез · /quit — вийти"
 )
 
 
@@ -48,13 +51,11 @@ class ChatSession:
         model: HaikuModel,
         *,
         style: str | None = None,
-        auto_trigger: bool = True,  # the decided v0.2 policy; tests may switch it off
         on_progress: Callable[[str], None] | None = None,
     ) -> None:
         self.session = session
         self.model = model
         self.style = choose_style(style, model, session.read_topic())
-        self.auto_trigger = auto_trigger
         self.on_progress = on_progress
         self.dispatcher = Dispatcher(config, runner)
         self.veduchyi = Veduchyi(config, model, runner, session, on_progress=on_progress)
@@ -79,10 +80,10 @@ class ChatSession:
         except (ValueError, LedgerError) as e:
             return f"не вдалося записати твій хід: {e}"
         planned = self._plan(role)
-        recorded = f"записано: твій хід {ROLE_NAMES[role]}а ({move.kind})"
-        if not self.auto_trigger:
-            return f"{recorded}; заплановано {ROLE_NAMES[planned.role]} — запусти через /go"
-        return f"{recorded}\n{self._launch(planned, text)}"
+        return (
+            f"записано: твій хід {ROLE_NAMES[role]}а ({move.kind}); "
+            f"заплановано хід {ROLE_NAMES[planned.role]}а — запусти через /go"
+        )
 
     # --- internals ---
 
@@ -132,13 +133,48 @@ class ChatSession:
             self._planned = None  # replan from the new template
             return f"стиль тепер {self.style}"
         if cmd == "/go":
-            planned = self._planned or self._plan(STEERING)
-            return self._launch(planned, "")
+            return self._go(arg)
         if cmd == "/ledger":
             return self._render_ledger()
         if cmd == "/quit":
             return ""  # the REPL handles exit; the session dir remains
         return _HELP
+
+    def _go(self, arg: str) -> str:
+        """`/go [стиль] [глибина]` — the only way a brainstorm launches; the тема is always
+        the session topic (set at start or carried by the reopened session). A style token
+        switches the style; bare `/go` runs the pending planned move when one exists,
+        otherwise the current style at the given depth (default full)."""
+        depth: str | None = None
+        for token in arg.split():
+            if token in STYLES:
+                self.style = token
+                self._planned = None  # a new template → the old plan no longer applies
+            elif token in DEPTHS:
+                depth = token
+            else:
+                return f"не зрозумів {token!r}: /go [стиль] [глибина: {'/'.join(DEPTHS)}]"
+        if depth is None and self._planned is not None:
+            return self._launch(self._planned, "")
+        seed = extract_seed(self.session.read_topic(), "", f"стиль {self.style}")
+        outcome = self.dispatcher.dispatch(
+            self.session,
+            ToolCall(
+                name=TOOL_NAME,
+                arguments={
+                    "seed": seed,
+                    "role": STYLES[self.style][0],
+                    "style_step": self.style,
+                    "depth": depth or "full",
+                },
+                id="chat-go",
+            ),
+            on_progress=self.on_progress,
+        )
+        self._planned = None
+        if isinstance(outcome, Refusal):
+            return f"хід відхилено: {outcome.reason}"
+        return self._present(outcome)
 
     def _render_ledger(self) -> str:
         try:

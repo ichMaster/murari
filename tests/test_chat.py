@@ -1,5 +1,6 @@
-"""MUR-017 — the chat REPL: commands, the decided trigger policy, and the phase DoD as an
-integration script (mock Haiku + MockAgentRunner/FakeAgent — no paid calls anywhere).
+"""MUR-017 (revised 2026-07-15) — the chat REPL: commands, the /go-only trigger policy,
+and the phase DoD as an integration script. Mock Haiku + MockAgentRunner/FakeAgent — no
+paid calls anywhere.
 """
 
 from __future__ import annotations
@@ -28,12 +29,12 @@ def _cfg(tmp_path, runs: int = 6) -> Config:
     return Config(runs=runs, max_turns=15, model="m", home=tmp_path)
 
 
-def _chat(tmp_path, fake_agent_cls, replies, *, style="investigate", runs=6, auto=True):
+def _chat(tmp_path, fake_agent_cls, replies, *, style="investigate", runs=6):
     cfg = _cfg(tmp_path, runs)
     session = create_session(cfg, "тема сесії")
     runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
     model = MockHaikuModel(replies)
-    chat = ChatSession(cfg, session, runner, model, style=style, auto_trigger=auto)
+    chat = ChatSession(cfg, session, runner, model, style=style)
     return chat, session, runner, model
 
 
@@ -48,54 +49,57 @@ def test_style_command_shows_sets_and_rejects(tmp_path, fake_agent_cls):
     assert "unknown style" in chat.turn("/style bogus")
 
 
-def test_ledger_command_renders_state(tmp_path, fake_agent_cls):
-    chat, session, runner, model = _chat(
-        tmp_path,
-        fake_agent_cls,
-        [HaikuReply(text="generate"), HaikuReply(text="переказ")],
-    )
-    chat.turn("а ще можна геотермальні станції")  # classified → recorded → auto-launch
-    out = chat.turn("/ledger")
-    assert "[open]" in out or "[confirmed]" in out
-    assert "сухих поспіль:" in out
-
-
 def test_unknown_command_prints_help(tmp_path, fake_agent_cls):
     chat, *_ = _chat(tmp_path, fake_agent_cls, [])
     assert "/style" in chat.turn("/wat") and "/go" in chat.turn("/wat")
 
 
-# --- trigger policy (decided v0.2): classified reply auto-launches; /go forces ---
+# --- trigger policy (revised): launch ONLY via /go ---
 
 
-def test_classified_reply_autolaunches_the_complementary_move(tmp_path, fake_agent_cls):
+def test_classified_reply_records_and_plans_without_launching(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [HaikuReply(text="generate")])
+    out = chat.turn("а ще можна використати X")
+    assert runner.calls == []  # nothing launched — /go is the only trigger
+    assert "записано: твій хід Фантазера" in out and "/go" in out
+    led = session.read_ledger()  # the user's move is already durable state
+    assert led.by_id("H1").status == "open" and led.runs[0].executor == "користувач"
+
+
+def test_bare_go_runs_the_planned_complementary_move(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,
         fake_agent_cls,
         [HaikuReply(text="generate"), HaikuReply(text="Суддя оцінив ідеї (джерела в LEDGER)")],
     )
-    out = chat.turn("а ще можна використати X")
-    # the user played Фантазер → the agent must NOT duplicate it (complementarity)
-    assert [req.role for req in runner.calls] == ["evaluate"]
-    assert "записано: твій хід Фантазера" in out
-    assert "Суддя оцінив ідеї" in out  # presentation came back in human language
-
-
-def test_without_autotrigger_reply_records_and_waits_for_go(tmp_path, fake_agent_cls):
-    chat, session, runner, model = _chat(
-        tmp_path,
-        fake_agent_cls,
-        [HaikuReply(text="generate"), HaikuReply(text="переказ прогону")],
-        auto=False,
-    )
-    out = chat.turn("а ще можна використати X")
-    assert runner.calls == []  # recorded, not launched
-    assert "/go" in out
-    led = session.read_ledger()  # the user move is already durable state
-    assert led.by_id("H1").status == "open" and led.runs[0].executor == "користувач"
+    chat.turn("а ще можна використати X")  # the user played Фантазер
     out = chat.turn("/go")
-    assert [req.role for req in runner.calls] == ["evaluate"]
+    assert [req.role for req in runner.calls] == ["evaluate"]  # complementary, not duplicate
+    assert "Суддя оцінив ідеї" in out  # a short summary of what was done
+
+
+def test_go_with_style_and_depth_runs_that_sequence(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path, fake_agent_cls, [HaikuReply(text="переказ прогону")]
+    )
+    out = chat.turn("/go explore brief")
+    assert chat.style == "explore"
+    assert [req.role for req in runner.calls] == ["generate", "mutate", "weave"]
+    assert "тема сесії" in runner.calls[0].seed_text  # the seed is the session topic
     assert "переказ прогону" in out
+
+
+def test_bare_go_without_plan_runs_current_style_full(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [HaikuReply(text="готово")])
+    chat.turn("/go")
+    roles = [req.role for req in runner.calls]
+    assert len(roles) == 6 and roles[0] == "generate" and roles[-1] == "weave"
+
+
+def test_go_rejects_unknown_token(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [])
+    assert "не зрозумів" in chat.turn("/go щосьдивне")
+    assert runner.calls == []
 
 
 def test_steering_reply_only_converses(tmp_path, fake_agent_cls):
@@ -114,7 +118,7 @@ def test_steering_reply_only_converses(tmp_path, fake_agent_cls):
 # --- the phase DoD as a script ---
 
 
-def test_debate_turn_pairs_adversarially_no_winner(tmp_path, fake_agent_cls):
+def test_debate_reply_plans_adversarially_and_go_runs_it(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(
         tmp_path,
         fake_agent_cls,
@@ -122,10 +126,11 @@ def test_debate_turn_pairs_adversarially_no_winner(tmp_path, fake_agent_cls):
         style="debate",
     )
     out = chat.turn("ось стаття, що підтверджує мою позицію")
+    assert "Опонента" in out  # planned: the user defends → the agent will attack
+    out = chat.turn("/go")
     (req,) = runner.calls
-    assert req.role == "oppose"  # the user defends → the agent attacks
-    assert "переможця немає" in out  # framing, not a verdict
-    assert "виграв" not in out.lower()
+    assert req.role == "oppose"
+    assert "виграв" not in out.lower() and "переможець" not in out.lower()
 
 
 def test_refusal_degrades_to_chat_message(tmp_path, fake_agent_cls):
@@ -135,10 +140,24 @@ def test_refusal_degrades_to_chat_message(tmp_path, fake_agent_cls):
         [HaikuReply(text="generate")],
         runs=0,  # no budget at all → dispatch refuses before spending
     )
-    out = chat.turn("а ще можна Y")
+    chat.turn("а ще можна Y")
+    out = chat.turn("/go")
     assert "хід відхилено" in out and "бюджет" in out
     assert runner.calls == []
     assert session.read_ledger() is not None  # the user's own move still landed
+
+
+def test_ledger_command_renders_state(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [HaikuReply(text="generate"), HaikuReply(text="переказ")],
+    )
+    chat.turn("а ще можна геотермальні станції")
+    chat.turn("/go")
+    out = chat.turn("/ledger")
+    assert "[open]" in out or "[confirmed]" in out
+    assert "сухих поспіль:" in out
 
 
 def test_repl_quit_leaves_session_on_disk(tmp_path, fake_agent_cls):
@@ -153,9 +172,9 @@ def test_repl_quit_leaves_session_on_disk(tmp_path, fake_agent_cls):
 def test_repl_reopen_continues_the_workspace(tmp_path, fake_agent_cls, monkeypatch, capsys):
     cfg = _cfg(tmp_path)
     runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
-    haiku = MockHaikuModel([HaikuReply(text="Назва сесії")])
-    # first REPL: create via --new, force one planned move with /go, quit
-    monkeypatch.setattr("sys.stdin", io.StringIO("/go\n/quit\n"))
+    haiku = MockHaikuModel([HaikuReply(text="Назва сесії"), HaikuReply(text="готово")])
+    # first REPL: create via --new, run one brief brainstorm, quit
+    monkeypatch.setattr("sys.stdin", io.StringIO("/go investigate brief\n/quit\n"))
     rc = main(
         ["chat", "--new", "тема про глину", "--style", "investigate"],
         runner=runner,
@@ -164,7 +183,7 @@ def test_repl_reopen_continues_the_workspace(tmp_path, fake_agent_cls, monkeypat
     )
     assert rc == 0
     (session_dir,) = cfg.sessions_dir.iterdir()
-    assert [req.role for req in runner.calls] == ["generate"]  # empty ledger → ideas first
+    assert [req.role for req in runner.calls] == ["generate", "evaluate", "weave"]
     assert Session(session_dir).read_ledger() is not None
 
     # second REPL: explicit continuation — the prior ledger is visible
