@@ -269,10 +269,12 @@ Each is closed no later than the phase where it gets in the way.
 - **Panel layout** (v0.3): chat on the left + right column, or three columns.
 - **Continuation surface** (v0.1–v0.3): how a session to continue is chosen — picker, path, or
   `/open <slug>` — and whether continuing writes in place or forks a timestamped copy.
-- **Style deviation rules** (v0.1–v0.2): how far Ведучий/scheduler may deviate from a style
-  template, and what counts as justification.
 - **Per-role canon split** (post-v0.1): when to promote role modules to separate canon files.
 
 Closed since the last revision: ~~DOCUMENT.md write rights~~ (user doesn't edit directly in v0 —
 orders to Ткач); ~~`/steer` command~~ (superseded by role detection); ~~timestamp placement~~
-(session-dir name `session-YYYYMMDD-HHMMSS[-slug]`, per implementation).
+(session-dir name `session-YYYYMMDD-HHMMSS[-slug]`, per implementation); ~~style deviation
+rules~~ (closed v0.2, MUR-015: deviation stays the engine's deterministic rule — two dry moves →
+the agent's `next_role` or the mutate/generate fallback, justification logged — and the chat
+layer surfaces that justification verbatim; Ведучий itself never free-form deviates from the
+template, it only picks the next move by complementarity/state).
