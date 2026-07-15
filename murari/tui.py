@@ -173,8 +173,9 @@ class MurariApp(App):
     """The three-panel murari interface over one `ChatSession`."""
 
     CSS = """
-    #document-pane { width: 3fr; }
-    #side-pane { width: 2fr; }
+    /* the two columns are equal width per user decision */
+    #document-pane { width: 1fr; }
+    #side-pane { width: 1fr; }
     /* the journal window is gone — its space goes to the chat (ledger 1fr : chat 2fr) */
     #chat-pane { height: 2fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
