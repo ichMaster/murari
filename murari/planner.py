@@ -80,9 +80,7 @@ def plan_next_move(style: str, ledger: Ledger, user_role: str) -> PlannedMove:
         raise ValueError(f"unknown style: {style!r}")
 
     if user_role in _ORDERS:  # a user order IS the request for that agent move
-        return _with_target(
-            user_role, ledger, f"виконую замовлення: хід {ROLE_NAMES[user_role]}а"
-        )
+        return _with_target(user_role, ledger, f"виконую замовлення: хід {ROLE_NAMES[user_role]}а")
 
     if style == "debate" and user_role != STEERING:
         if user_role == "oppose":  # the user attacks → the agent defends with evidence
