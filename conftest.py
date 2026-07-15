@@ -38,32 +38,40 @@ class FakeAgent:
         self._n = 0
         self.scored = False  # set once an evaluate has written the ## Ранжування section
         self.args: list[tuple[str, str, str]] = []  # (hid, side, text) for the ## Аргументи section
-        self._loaded = False  # existing workspace state is adopted on the first call
         self.journal: list[str] = []  # pre-existing `## Прогони` lines survive rebuilds
 
-    def _load(self, session: Session) -> None:
-        """Adopt whatever is already in the workspace (e.g. user moves recorded by the chat
-        layer, or a prior agent's ledger) so a rebuild never silently drops state."""
-        self._loaded = True
-        if self.hyps or not session.ledger_file.exists():
-            return  # a stateful in-test agent keeps its own state authoritative
+    def _sync(self, session: Session) -> None:
+        """Adopt additions others made to the workspace between calls (user moves recorded
+        by the chat layer, a prior agent's ledger): unknown hypotheses, new arguments, and
+        the journal — without overriding this agent's view of ids it already tracks."""
+        if not session.ledger_file.exists():
+            return
         from murari.ledger import parse_ledger
 
         led = parse_ledger(session.ledger_file.read_text(encoding="utf-8"))
+        known = {h["id"] for h in self.hyps}
         for h in led.hypotheses:
-            self.hyps.append(
-                {
-                    "id": h.id,
-                    "status": h.status,
-                    "text": h.text,
-                    "source": h.source,
-                    "parents": h.parents,
-                    "mutation": h.mutation,
-                }
-            )
-        self._n = max((int(h.id[1:]) for h in led.hypotheses), default=0)
-        self.scored = bool(led.scores)
-        self.args = [(a.hid, a.side.upper(), a.text) for a in led.arguments]
+            if h.id not in known:
+                self.hyps.append(
+                    {
+                        "id": h.id,
+                        "status": h.status,
+                        "text": h.text,
+                        "source": h.source,
+                        "parents": h.parents,
+                        "mutation": h.mutation,
+                    }
+                )
+        self._n = max(
+            (int(h["id"][1:]) for h in self.hyps),
+            default=self._n,
+        )
+        self.scored = self.scored or bool(led.scores)
+        existing = set(self.args)
+        for a in led.arguments:
+            entry = (a.hid, a.side.upper(), a.text)
+            if entry not in existing:
+                self.args.append(entry)
         self.journal = [r.raw for r in led.runs]
 
     def _add(self, *, status="open", source=None, parents=(), mutation=None) -> str:
@@ -127,8 +135,7 @@ class FakeAgent:
 
     def __call__(self, req: RunRequest) -> None:
         session = Session(req.session_dir)
-        if not self._loaded:
-            self._load(session)
+        self._sync(session)
         role = req.role
         if role == "generate":
             for _ in range(3):

@@ -111,6 +111,27 @@ def test_router_launches_at_most_one_move(tmp_path, fake_agent_cls):
     assert "Фантазер накидав ідей" in out
 
 
+def test_argument_with_explicit_hid_lands_under_that_hypothesis(tmp_path, fake_agent_cls):
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [
+            HaikuReply(text="переказ"),  # /go brief creates H1..H3
+            HaikuReply(text="brainstorm deepen"),  # the router
+            HaikuReply(text="oppose"),  # detect: the user argues
+            HaikuReply(text="Дослідник перевірив твій контраргумент по H2"),  # reflect
+        ],
+    )
+    chat.turn("/go brief")
+    out = chat.turn("це не спрацює з H2, бо надто дорого")
+    led = session.read_ledger()
+    args = led.arguments_for("H2")  # the argument lives under ### H2, not as a candidate
+    assert any(a.side == "проти" and "дорого" in a.text for a in args)
+    assert all(h.text.find("не спрацює з H2") == -1 for h in led.hypotheses)  # no stray Hn
+    assert "→H2" in out  # the recorded-move line names the target
+    assert runner.calls[-1].role == "deepen" and runner.calls[-1].target_idea == "H2"
+
+
 def test_reflect_failure_falls_back_to_run_summary(tmp_path, fake_agent_cls):
     # only the router and detect replies are scripted — reflect raises → local summary
     chat, session, runner, model = _chat(

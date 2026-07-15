@@ -30,6 +30,7 @@ from murari.participant import (
     BRAINSTORM,
     STEERING,
     detect_role,
+    find_target,
     record_user_move,
     route_turn,
 )
@@ -87,15 +88,17 @@ class ChatSession:
                 return self.veduchyi.turn(text)
             except HaikuError as e:
                 return f"Ведучий недоступний ({e}); спробуй /go, /ledger або /style"
+        target = find_target(text, self._ledger_ids())  # an explicit "H2" in the reply
         recorded = ""
         user_role = detect_role(self.model, text)
         if user_role != STEERING:  # the reply itself is a contribution — keep the provenance
             try:
-                move = record_user_move(self.session, user_role, text)
-                recorded = f"записано: твій хід {ROLE_NAMES[user_role]}а ({move.kind})\n"
+                move = record_user_move(self.session, user_role, text, target_idea=target)
+                where = f" →{move.hid}" if move.hid else ""
+                recorded = f"записано: твій хід {ROLE_NAMES[user_role]}а ({move.kind}{where})\n"
             except (ValueError, LedgerError) as e:
                 recorded = f"(не записав твій хід: {e})\n"
-        return recorded + self._launch_move(route.role, text)
+        return recorded + self._launch_move(route.role, text, target=target)
 
     # --- internals ---
 
@@ -103,20 +106,26 @@ class ChatSession:
         if self.on_progress is not None:
             self.on_progress(text)
 
-    def _launch_move(self, role: str, user_text: str) -> str:
+    def _ledger_ids(self) -> set[str]:
+        try:
+            led = self.session.read_ledger()
+        except LedgerError:
+            return set()
+        return led.ids() if led else set()
+
+    def _launch_move(self, role: str, user_text: str, *, target: str | None = None) -> str:
         """One move of `role` — all the router is allowed to launch (deeper runs are /go).
         After the move, Haiku answers the user's reply in substance over the refreshed
         document (`reflect`); the dry run-summary is only the fallback."""
-        note = f"хід {ROLE_NAMES[role]}а"
+        note = f"хід {ROLE_NAMES[role]}а" + (f" →{target}" if target else "")
         self._announce(f"⚙ викликаю брейнсторм-агента: {note}…")
         seed = extract_seed(self.session.read_topic(), user_text, note)
+        args: dict = {"seed": seed, "role": role, "style_step": self.style}
+        if target:
+            args["target_idea"] = target
         outcome = self.dispatcher.dispatch(
             self.session,
-            ToolCall(
-                name=TOOL_NAME,
-                arguments={"seed": seed, "role": role, "style_step": self.style},
-                id="chat",
-            ),
+            ToolCall(name=TOOL_NAME, arguments=args, id="chat"),
             on_progress=self.on_progress,
         )
         if isinstance(outcome, Refusal):

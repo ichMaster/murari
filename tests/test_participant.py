@@ -15,7 +15,13 @@ import pytest
 from murari.config import Config
 from murari.engine import Engine
 from murari.haiku import HaikuError, HaikuReply, MockHaikuModel
-from murari.participant import STEERING, UserMove, detect_role, record_user_move
+from murari.participant import (
+    STEERING,
+    UserMove,
+    detect_role,
+    find_target,
+    record_user_move,
+)
 from murari.runner import MockAgentRunner
 from murari.session import create_session
 
@@ -70,6 +76,15 @@ def test_low_confidence_and_failures_are_steering():
 def test_label_is_normalized():
     mock = MockHaikuModel([HaikuReply(text="  Oppose.\nпояснення")])
     assert detect_role(mock, "не вийде") == "oppose"
+
+
+def test_find_target_matches_explicit_mentions():
+    ids = {"H1", "H2", "H12"}
+    assert find_target("це не спрацює з H2, бо дорого", ids) == "H2"
+    assert find_target("а н12 сумнівна", ids) == "H12"  # Cyrillic Н, any case
+    assert find_target("H99 не існує, а H1 так", ids) == "H1"  # unknown ids are skipped
+    assert find_target("без згадок", ids) is None
+    assert find_target("H2", set()) is None  # empty ledger → nothing to pin
 
 
 # --- the user-move writer: hypotheses ---

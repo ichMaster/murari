@@ -13,6 +13,7 @@ model touches no files.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from murari.haiku import HaikuModel
@@ -77,6 +78,20 @@ def route_turn(model: HaikuModel, reply_text: str) -> Route:
     if len(tokens) >= 2 and tokens[0] == BRAINSTORM and tokens[1] in USER_ROLES:
         return Route(mode=BRAINSTORM, role=tokens[1])
     return Route(mode=DOCUMENT)
+
+
+# An explicit hypothesis mention in a reply — Latin H or Cyrillic Н, e.g. "H2" / "н2".
+_HID_MENTION = re.compile(r"\b[HН](\d+)\b", re.IGNORECASE)
+
+
+def find_target(text: str, ids: set[str]) -> str | None:
+    """The first hypothesis the reply explicitly mentions and the ledger actually has —
+    so a user's argument lands under `### Hn` instead of becoming a stray candidate."""
+    for m in _HID_MENTION.finditer(text):
+        hid = f"H{m.group(1)}"
+        if hid in ids:
+            return hid
+    return None
 
 
 def detect_role(model: HaikuModel, reply_text: str) -> str:
