@@ -69,11 +69,11 @@ Full command reference and examples: [docs/USAGE.md](docs/USAGE.md).
 
 ## Chat
 
-Start a chat on a **new topic** (the session is created and auto-named by Haiku; `--style` and
-`--name` are optional):
+Start a chat on a **new topic** (the session is created and auto-named by Haiku; `--style`,
+`--depth`, and `--name` are optional — style and depth become the defaults for `/go`):
 
 ```bash
-murari chat --new "теплові насоси для багатоквартирних будинків" --style investigate
+murari chat --new "теплові насоси для багатоквартирних будинків" --style investigate --depth brief
 ```
 
 Or **continue an existing session** — the ledger and document carry on where they left off:
@@ -81,6 +81,8 @@ Or **continue an existing session** — the ledger and document carry on where t
 ```bash
 murari list                                              # pick a session
 murari chat .murari/brainstorm-sessions/session-…-slug   # reopen it
+murari chat                                              # no args: the most recent session,
+                                                         # or a fresh empty one if none exist
 ```
 
 Then just type. Every reply first passes a Haiku **router**:
@@ -94,8 +96,8 @@ Then just type. Every reply first passes a Haiku **router**:
 Deeper runs are yours explicitly, always over the session topic:
 
 ```
-/go                  # the current style, full sequence
-/go explore brief    # switch style and run its 3-move version
+/go                  # run the current style at the current depth
+/go explore brief    # switch style/depth and run (they stay the new defaults)
 /style debate        # change the style without running anything
 /ledger              # the hypotheses, journal, and dry-run counter
 /quit                # exit — the session directory remains on disk

@@ -92,6 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument(
         "--style", default=None, choices=sorted(STYLES), help="style (default: inferred)"
     )
+    chat.add_argument(
+        "--depth",
+        default=None,
+        choices=DEPTHS,
+        help="default depth for /go (full/brief/tiny; default full)",
+    )
     return p
 
 
@@ -264,9 +270,17 @@ def cmd_chat(
             print(f"cannot open session: {e}", file=sys.stderr)
             return 1
     else:
-        print('вкажи сесію або --new "<тема>"', file=sys.stderr)
-        return 1
-    chat = ChatSession(config, session, runner, haiku, style=args.style, on_progress=print)
+        # no args: reopen the most recent session, or start an empty one when none exist
+        sessions = list_sessions(config)
+        if sessions:
+            session = open_session(sessions[0].path)
+            print(f"відкрито останню сесію: {session.path.name}")
+        else:
+            session = create_session(config, "", args.name)
+            print(f"created {session.path} (порожня — задай тему першою реплікою)")
+    chat = ChatSession(
+        config, session, runner, haiku, style=args.style, depth=args.depth, on_progress=print
+    )
     run_repl(chat, sys.stdin, print)
     return 0
 

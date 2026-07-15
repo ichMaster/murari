@@ -137,6 +137,23 @@ def test_bare_go_runs_current_style_full(tmp_path, fake_agent_cls):
     assert len(roles) == 6 and roles[0] == "generate" and roles[-1] == "weave"
 
 
+def test_start_depth_is_the_go_default(tmp_path, fake_agent_cls, monkeypatch, capsys):
+    cfg = _cfg(tmp_path)
+    runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    haiku = MockHaikuModel([HaikuReply(text="Назва"), HaikuReply(text="готово")])
+    monkeypatch.setattr("sys.stdin", io.StringIO("/go\n/quit\n"))
+    rc = main(
+        ["chat", "--new", "тема", "--style", "investigate", "--depth", "brief"],
+        runner=runner,
+        config=cfg,
+        haiku=haiku,
+    )
+    assert rc == 0
+    # bare /go honored the start depth: investigate/brief = 3 moves
+    assert [req.role for req in runner.calls] == ["generate", "evaluate", "weave"]
+    assert "investigate/brief" in capsys.readouterr().out  # shown in the REPL header
+
+
 def test_go_rejects_unknown_token(tmp_path, fake_agent_cls):
     chat, session, runner, model = _chat(tmp_path, fake_agent_cls, [])
     assert "не зрозумів" in chat.turn("/go щосьдивне")
@@ -210,7 +227,22 @@ def test_repl_reopen_continues_the_workspace(tmp_path, fake_agent_cls, monkeypat
     assert "H1" in out and "сухих поспіль" in out  # built on the first REPL's state
 
 
-def test_chat_requires_session_or_new(tmp_path, capsys):
-    rc = main(["chat"], runner=MockAgentRunner({}), config=_cfg(tmp_path), haiku=MockHaikuModel())
-    assert rc == 1
-    assert "--new" in capsys.readouterr().err
+def test_bare_chat_creates_empty_session_when_none_exist(tmp_path, monkeypatch, capsys):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr("sys.stdin", io.StringIO("/quit\n"))
+    rc = main(["chat"], runner=MockAgentRunner({}), config=cfg, haiku=MockHaikuModel())
+    assert rc == 0
+    (session_dir,) = cfg.sessions_dir.iterdir()  # an empty session was created
+    assert "порожня" in capsys.readouterr().out
+    assert Session(session_dir).read_topic() == ""
+
+
+def test_bare_chat_reopens_the_most_recent_session(tmp_path, monkeypatch, capsys):
+    cfg = _cfg(tmp_path)
+    create_session(cfg, "стара тема", stamp="20260101-000001")
+    recent = create_session(cfg, "нова тема", stamp="20260102-000001")
+    monkeypatch.setattr("sys.stdin", io.StringIO("/quit\n"))
+    rc = main(["chat"], runner=MockAgentRunner({}), config=cfg, haiku=MockHaikuModel())
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"відкрито останню сесію: {recent.path.name}" in out

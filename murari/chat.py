@@ -57,11 +57,13 @@ class ChatSession:
         model: HaikuModel,
         *,
         style: str | None = None,
+        depth: str | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> None:
         self.session = session
         self.model = model
         self.style = choose_style(style, model, session.read_topic())
+        self.depth = depth or "full"  # the default depth /go runs at (set at start)
         self.on_progress = on_progress
         self.dispatcher = Dispatcher(config, runner)
         self.veduchyi = Veduchyi(config, model, runner, session, on_progress=on_progress)
@@ -137,14 +139,14 @@ class ChatSession:
 
     def _go(self, arg: str) -> str:
         """`/go [стиль] [глибина]` — the user's explicit way to run something deeper than
-        the router's single tiny move. The тема is always the session topic (set at start
-        or carried by the reopened session); a style token also switches the style."""
-        depth: str | None = None
+        the router's single tiny move. The тема is always the session topic; style and depth
+        default to what the chat was started with (`--style`/`--depth`), and any token given
+        here switches that default for the rest of the session."""
         for token in arg.split():
             if token in STYLES:
                 self.style = token
             elif token in DEPTHS:
-                depth = token
+                self.depth = token
             else:
                 return f"не зрозумів {token!r}: /go [стиль] [глибина: {'/'.join(DEPTHS)}]"
         seed = extract_seed(self.session.read_topic(), "", f"стиль {self.style}")
@@ -156,7 +158,7 @@ class ChatSession:
                     "seed": seed,
                     "role": STYLES[self.style][0],
                     "style_step": self.style,
-                    "depth": depth or "full",
+                    "depth": self.depth,
                 },
                 id="chat-go",
             ),
@@ -184,7 +186,7 @@ def run_repl(chat: ChatSession, lines: Iterable[str], write: Callable[[str], Non
     exits; the session directory always remains on disk."""
     title = chat.session.read_title()
     name = f" — {title}" if title else ""
-    write(f"сесія: {chat.session.path.name}{name} (стиль {chat.style}); {_HELP}")
+    write(f"сесія: {chat.session.path.name}{name} (стиль {chat.style}/{chat.depth}); {_HELP}")
     for raw in lines:
         line = raw.strip()
         if line == "/quit":
