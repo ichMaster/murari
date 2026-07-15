@@ -254,7 +254,7 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | v0.0 released as **0.0.1** (proof milestone); orchestrator ships 0.1.0; graduation = v1.0.0 | ✅ revised (2026-07-04) |
 | Session dir `MURARI_HOME/brainstorm-sessions/session-<timestamp>[-slug]` with input/output split; `MURARI_HOME` default `<repo>/.murari` | ✅ accepted per implementation (2026-07-04) |
 | Verified invocation: canon via `--append-system-prompt`; fence/preamble-tolerant parser | ✅ accepted (2026-07-04, v0.0 findings) |
-| Async run + non-blocking chat | 🔸 tentative |
+| Async run + non-blocking chat: runs live in a TUI worker thread, one at a time (a second submit is politely refused); progress streams into the chat; panels refresh on completion | ✅ accepted (2026-07-16, MUR-020) |
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
 | **Trigger policy / turn routing**: кожна репліка проходить окремий Haiku-виклик-класифікатор — `document` (питання по наявному документу/самарі/розмова → ще один виклик Haiku над DOCUMENT.md) або `brainstorm <роль>` (записується внесок користувача і запускається Claude-агент на **один хід** цієї ролі — глибше класифікатор запускати не може); глибокі прогони — лише явною командою `/go [стиль] [глибина]` над темою сесії (тема задається на старті або живе в reopened сесії) | ✅ revised (2026-07-15, user decision) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |

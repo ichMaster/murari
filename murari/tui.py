@@ -12,12 +12,16 @@ without the `[tui]` extra degrades to an install hint while everything else keep
 
 from __future__ import annotations
 
+import time
+
 from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Markdown, RichLog, Static, Tree
+from textual.worker import Worker, WorkerState
 
-from murari.chat import ChatSession
+from murari.chat import ChatSession, _format_reply
 from murari.config import Config
 from murari.ledger import Hypothesis, Ledger, LedgerError
 from murari.session import Session
@@ -133,6 +137,10 @@ class MurariApp(App):
         super().__init__()
         self.chat = chat
         self.config = config
+        self.chat_lines: list[str] = []  # everything written to the chat log (tests read this)
+        self._busy = False  # one run at a time — a second submit is politely refused
+        self._dig_started = 0.0
+        self._dig_label = "копає"
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -148,12 +156,70 @@ class MurariApp(App):
         session = self.chat.session
         title = session.read_title()
         name = f" — {title}" if title else ""
-        log = self.query_one("#chat-log", RichLog)
-        log.write(f"сесія: {session.path.name}{name}")
+        self._write_chat(f"сесія: {session.path.name}{name}")
+        # progress from the worker thread streams into the chat log (announce + engine lines)
+        self.chat.on_progress = self._progress_from_thread
+        self.chat.veduchyi.on_progress = self._progress_from_thread
         self.refresh_workspace()
         self.set_status(move=None, digging=False)
 
-    # --- shared surfaces (MUR-019 wires live refresh into real runs) ---
+    # --- async runs (MUR-020): the chat stays live while the agent digs ---
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        text = event.value.strip()
+        event.input.value = ""
+        if not text:
+            return
+        if text == "/quit":
+            self.exit()  # the session directory remains on disk
+            return
+        if self._busy:  # decided policy: refuse politely, never queue silently
+            self._write_chat("⏳ агент ще копає — зачекай завершення ходу")
+            return
+        self._write_chat(f"ти> {text}")
+        self._busy = True
+        self._dig_started = time.monotonic()
+        self._dig_label = "копає"
+        self.set_status(move=None, digging=True)
+        self._run_turn(text)
+
+    @work(thread=True, name="turn", exit_on_error=False)
+    def _run_turn(self, text: str) -> str:
+        return self.chat.turn(text)  # minutes-long — lives in a worker thread
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.worker.name != "turn":
+            return
+        if event.state == WorkerState.SUCCESS:
+            self._finish_turn(str(event.worker.result or ""))
+        elif event.state in (WorkerState.ERROR, WorkerState.CANCELLED):
+            self._write_chat(f"помилка виконання: {event.worker.error}")
+            self._finish_turn("")
+
+    def _finish_turn(self, reply: str) -> None:
+        self._busy = False
+        self.refresh_workspace()  # panels update the moment the move completes
+        self.set_status(move=None, digging=False)
+        if reply:
+            self._write_chat("")
+            self._write_chat(_format_reply(reply))
+
+    def _progress_from_thread(self, line: str) -> None:
+        """on_progress arrives on the worker thread — marshal it onto the UI thread."""
+        self.call_from_thread(self._handle_progress, line)
+
+    def _handle_progress(self, line: str) -> None:
+        self._write_chat(line)
+        if line.startswith("⚙"):  # the announce line names what is being dug
+            self._dig_label = line.removeprefix("⚙ викликаю брейнсторм-агента:").strip(" …")
+        elapsed = time.monotonic() - self._dig_started
+        self.set_status(move=f"{self._dig_label} · {elapsed:.0f}s", digging=True)
+
+    def _write_chat(self, line: str) -> None:
+        self.chat_lines.append(line)
+        self.query_one("#chat-log", RichLog).write(line)
+
+    # --- shared surfaces ---
 
     def refresh_workspace(self) -> None:
         """Both workspace panels re-read their files (session open, move completion)."""

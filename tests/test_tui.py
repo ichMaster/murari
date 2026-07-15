@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -139,6 +140,69 @@ async def test_malformed_ledger_renders_error_without_crash(tmp_path, fake_agent
         assert "LEDGER не читається" in journal
         assert app.query_one("#chat-input") is not None  # the app is still alive
         await pilot.pause()
+
+
+# --- MUR-020: async runs, non-blocking chat, status transitions ---
+
+
+async def test_chat_stays_responsive_during_run(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема сесії")
+    started, gate = threading.Event(), threading.Event()
+    agent = fake_agent_cls()
+
+    def slow_agent(req):  # the move blocks until the test releases the gate
+        started.set()
+        assert gate.wait(timeout=5)
+        agent(req)
+
+    runner = MockAgentRunner(_contracts(), on_run=slow_agent)
+    chat = ChatSession(cfg, session, runner, MockHaikuModel([HaikuReply(text="готово")]))
+    app = MurariApp(chat, cfg)
+    async with app.run_test() as pilot:
+        inp = app.query_one("#chat-input", Input)
+        inp.focus()
+        inp.value = "/go brief"
+        await pilot.press("enter")
+        for _ in range(200):  # wait until the worker actually reached the agent
+            if started.is_set():
+                break
+            await pilot.pause(0.01)
+        assert started.is_set()
+        bar = str(app.query_one("#status-bar", StatusBar).content)
+        assert "копає" in bar  # digging state announced
+        # the input is still alive: a second submit is politely refused, nothing queues
+        inp.value = "а ще ідея"
+        await pilot.press("enter")
+        assert any("зачекай" in ln for ln in app.chat_lines)
+        assert len(runner.calls) <= 3  # only the /go brief moves — no second dispatch
+        gate.set()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert "idle" in str(app.query_one("#status-bar", StatusBar).content)
+        # completion refreshed the panels and rendered the visually-separated reply
+        tree = app.query_one("#ledger-tree", Tree)
+        assert len(tree.root.children) >= 1
+        assert any(ln.startswith("murari> ") for ln in app.chat_lines)
+        assert any("виконую" in ln for ln in app.chat_lines)  # engine progress streamed live
+
+
+async def test_worker_failure_lands_as_chat_message(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+
+        def boom(text):
+            raise RuntimeError("бум")
+
+        app.chat.turn = boom  # simulate an unexpected pipeline crash
+        inp = app.query_one("#chat-input", Input)
+        inp.focus()
+        inp.value = "щось"
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert any("помилка виконання" in ln for ln in app.chat_lines)
+        assert "idle" in str(app.query_one("#status-bar", StatusBar).content)
 
 
 # --- status-bar inputs ---
