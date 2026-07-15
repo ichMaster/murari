@@ -33,8 +33,12 @@ replies into seeds — **plus the facilitator duties**:
 - **Selects the style** (user's explicit `/style`, or inferred from the topic framing) and may
   deviate from its template with justification, based on LEDGER state.
 
-**Ведучий's only tool is `run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?)`** —
-still exactly one tool. Nothing else: no filesystem, no Bash, no web search of its own.
+**Ведучий's only tool is `run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?,
+depth?)`** — still exactly one tool (`depth` added per roadmap §v0.2: omitted → a single move of
+`role`; `brief`/`full` → the style's curated sequence ending in weave; `tiny` → the style's
+signature role). Nothing else: no filesystem, no Bash, no web search of its own. Tool arguments
+are **validated as data** by deterministic Python (role/H-id/mutation/depth/budget) — an invalid
+call gets a structured refusal back, never a run.
 Reading workspace files for the panels, launching `claude -p`, parsing JSON — deterministic
 Python in the TUI, **not** a model decision. Agent output reaches Haiku as **data through
 code**, never as a tool it drives.

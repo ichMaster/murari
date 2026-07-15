@@ -274,7 +274,8 @@ Tool-політика per роль ✅ (оркестратор звужує `--a
 - **Спільний стан** — файли сесії; координація тільки через них.
 - **Власність DOCUMENT.md** — тільки Ткач.
 - **Ведучий (Haiku)** так само має рівно один інструмент; сигнатура розширюється:
-  `run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?)`.
+  `run_brainstorm(seed, role, target_idea?, mutation_type?, style_step?, depth?)` (без `depth` —
+  один хід ролі; `brief`/`full` — курована послідовність стилю; `tiny` — підписна роль стилю).
 
 ## Вихідний контракт v2 ✅
 

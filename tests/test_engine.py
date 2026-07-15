@@ -108,6 +108,29 @@ def test_run_style_tiny_is_one_role_no_document(tmp_path, fake_agent_cls):
     assert session.read_document() is None  # tiny doesn't weave
 
 
+def test_run_style_sequence_override_runs_exactly_those_moves(tmp_path, fake_agent_cls):
+    # the chat dispatch path (MUR-013): an explicit sequence, logged as depth "custom",
+    # with the seed text riding every kickoff
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    res = Engine(cfg, mock).run_style(
+        session, "investigate", sequence=("generate",), seed=0, seed_text="сід"
+    )
+    assert [m.move for m in res.moves] == ["generate"] and res.depth == "custom"
+    assert mock.calls[0].seed_text == "сід"
+
+
+def test_run_style_sequence_rejects_unknown_role(tmp_path, fake_agent_cls):
+    cfg = _cfg(tmp_path)
+    session = create_session(cfg, "тема")
+    mock = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    with pytest.raises(EngineError, match="unknown role"):
+        Engine(cfg, mock).run_style(session, "investigate", sequence=("hack",), seed=0)
+    with pytest.raises(EngineError, match="mutation_override"):
+        Engine(cfg, mock).run_style(session, "investigate", mutation_override="explode", seed=0)
+
+
 def test_explore_is_divergent():
     # explore surfaces many ideas (generate+mutate), scores them once (score-only evaluate),
     # then catalogs; it must not deepen (that narrows to a single idea)

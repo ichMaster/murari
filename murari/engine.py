@@ -186,12 +186,28 @@ class Engine:
         style: str = DEFAULT_STYLE,
         *,
         depth: str = DEFAULT_DEPTH,
+        sequence: tuple[str, ...] | None = None,
         seed: int = 0,
         max_moves: int | None = None,
         target: str | None = None,
+        mutation_override: str | None = None,
+        seed_text: str | None = None,
         on_progress: Callable[[str], None] | None = None,
     ) -> EngineResult:
-        moves = sequence_for(style, depth)  # validates style + depth
+        """Run a style's sequence — or, for the chat layer's dispatch, an explicit `sequence`
+        (e.g. a single role move; logged as depth "custom"). `mutation_override` pins the
+        mutation type instead of the seeded pick (a user's «а що якщо навпаки?»), and
+        `seed_text` rides every kickoff as quoted context from the Ведучий."""
+        if mutation_override is not None and mutation_override not in _MUTATION_CHOICES:
+            raise EngineError(f"unknown mutation_override: {mutation_override!r}")
+        if sequence is not None:
+            for r in sequence:
+                if r not in ROLES:
+                    raise EngineError(f"unknown role in sequence: {r!r}")
+            moves: tuple[str, ...] = tuple(sequence)
+            depth = "custom"
+        else:
+            moves = sequence_for(style, depth)  # validates style + depth
         if target is not None:
             ids = (session.read_ledger() or _empty()).ids()
             if target not in ids:
@@ -226,7 +242,10 @@ class Engine:
                     move_target = target
                 else:
                     move_target = select_target(move, before)
-                mutation_type = pick_mutation(rng) if move == "mutate" else None
+                if move == "mutate":
+                    mutation_type = mutation_override or pick_mutation(rng)
+                else:
+                    mutation_type = None
                 partner = (
                     select_partner(before, move_target) if mutation_type == "combine" else None
                 )
@@ -250,6 +269,7 @@ class Engine:
                         mutation_type=mutation_type,
                         partner_idea=partner,
                         style_step=f"{style}[{i}]",
+                        seed_text=seed_text,
                     )
                 )
                 dt = time.monotonic() - t0

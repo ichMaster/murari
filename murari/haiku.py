@@ -111,7 +111,8 @@ class MockHaikuModel:
     def complete(
         self, system: str, messages: list[dict], tools: list[dict] | None = None
     ) -> HaikuReply:
-        self.calls.append({"system": system, "messages": messages, "tools": tools})
+        # snapshot the message list: callers mutate their history after the call
+        self.calls.append({"system": system, "messages": list(messages), "tools": tools})
         if not self._replies:
             raise HaikuError("mock script exhausted")
         reply = self._replies.pop(0)
