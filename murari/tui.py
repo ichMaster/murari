@@ -182,8 +182,8 @@ class MurariApp(App):
     /* the journal window is gone — its space goes to the chat (ledger 1fr : chat 2fr) */
     #chat-pane { height: 2fr; }
     #chat-log { height: 1fr; border: round $surface-lighten-2; }
-    /* the input window is exactly three rows high — a real multiline field, no border */
-    #chat-input { dock: bottom; height: 3; border: none; }
+    /* the input window is exactly four rows high — a real multiline field, no border */
+    #chat-input { dock: bottom; height: 4; border: none; }
     #ledger-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #document-panel { height: 1fr; border: round $surface-lighten-2; overflow-y: auto; }
     #status-bar { dock: bottom; height: 1; background: $surface-lighten-1; }

@@ -298,11 +298,11 @@ async def test_reply_renders_markdown_with_green_prompt(tmp_path, fake_agent_cls
         assert any(ln == "murari> **жирний** підсумок" for ln in app.chat_lines)
 
 
-async def test_input_is_three_lines_high(tmp_path, fake_agent_cls):
+async def test_input_is_four_lines_high(tmp_path, fake_agent_cls):
     app, *_ = _app(tmp_path, fake_agent_cls)
     async with app.run_test() as pilot:
         inp = app.query_one("#chat-input", ChatInput)
-        assert inp.region.height == 3
+        assert inp.region.height == 4
         await pilot.pause()
 
 
