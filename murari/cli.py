@@ -98,6 +98,20 @@ def build_parser() -> argparse.ArgumentParser:
         choices=DEPTHS,
         help="default depth for /go (full/brief/tiny; default full)",
     )
+
+    tui = sub.add_parser("tui", help="three-panel Textual interface (v0.3; needs the [tui] extra)")
+    tui.add_argument("session", nargs="?", default=None, help="existing session to continue")
+    tui.add_argument("--new", dest="new_topic", default=None, help="start a fresh session")
+    tui.add_argument("--name", default=None, help="optional slug/title for --new")
+    tui.add_argument(
+        "--style", default=None, choices=sorted(STYLES), help="style (default: inferred)"
+    )
+    tui.add_argument(
+        "--depth",
+        default=None,
+        choices=DEPTHS,
+        help="default depth for /go (full/brief/tiny; default full)",
+    )
     return p
 
 
@@ -256,28 +270,39 @@ def cmd_run(
     return rc
 
 
-def cmd_chat(
-    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
-) -> int:
+def _resolve_chat_session(
+    args: argparse.Namespace, config: Config, haiku: HaikuModel | None
+) -> Session | None:
+    """Session resolution shared by `chat` and `tui`: `--new` creates (the Namer flow), a
+    path reopens explicitly, bare → the most recent session or a fresh empty one. Returns
+    None (after printing the error) when an explicit path cannot be opened."""
     if args.new_topic:
         title = args.name or Namer(haiku).name(args.new_topic)
         session = create_session(config, titled_topic(title, args.new_topic), args.name)
         print(f"created {session.path} — {title}")
-    elif args.session:
+        return session
+    if args.session:
         try:
-            session = open_session(Path(args.session))
+            return open_session(Path(args.session))
         except SessionError as e:
             print(f"cannot open session: {e}", file=sys.stderr)
-            return 1
-    else:
-        # no args: reopen the most recent session, or start an empty one when none exist
-        sessions = list_sessions(config)
-        if sessions:
-            session = open_session(sessions[0].path)
-            print(f"відкрито останню сесію: {session.path.name}")
-        else:
-            session = create_session(config, "", args.name)
-            print(f"created {session.path} (порожня — задай тему першою реплікою)")
+            return None
+    sessions = list_sessions(config)
+    if sessions:
+        session = open_session(sessions[0].path)
+        print(f"відкрито останню сесію: {session.path.name}")
+        return session
+    session = create_session(config, "", args.name)
+    print(f"created {session.path} (порожня — задай тему першою реплікою)")
+    return session
+
+
+def cmd_chat(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
+    session = _resolve_chat_session(args, config, haiku)
+    if session is None:
+        return 1
     chat = ChatSession(
         config, session, runner, haiku, style=args.style, depth=args.depth, on_progress=print
     )
@@ -286,6 +311,25 @@ def cmd_chat(
         print("\nти> ", end="", flush=True)
 
     run_repl(chat, sys.stdin, print, prompt=_prompt)
+    return 0
+
+
+def cmd_tui(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
+    session = _resolve_chat_session(args, config, haiku)
+    if session is None:
+        return 1
+    try:
+        from murari.tui import MurariApp
+    except ImportError:
+        print(
+            "TUI потребує пакет textual — встанови extra: pip install 'murari[tui]'",
+            file=sys.stderr,
+        )
+        return 1
+    chat = ChatSession(config, session, runner, haiku, style=args.style, depth=args.depth)
+    MurariApp(chat, config).run()
     return 0
 
 
@@ -302,7 +346,14 @@ def cmd_list(
     return 0
 
 
-_COMMANDS = {"new": cmd_new, "open": cmd_open, "run": cmd_run, "list": cmd_list, "chat": cmd_chat}
+_COMMANDS = {
+    "new": cmd_new,
+    "open": cmd_open,
+    "run": cmd_run,
+    "list": cmd_list,
+    "chat": cmd_chat,
+    "tui": cmd_tui,
+}
 
 
 def main(

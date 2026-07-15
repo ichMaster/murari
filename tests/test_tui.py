@@ -1,0 +1,124 @@
+"""MUR-018 — the TUI scaffold: app shell, panel layout, status bar, session resolution.
+
+Headless: the app runs under Textual's pilot (`run_test`), the pipeline under mock Haiku +
+MockAgentRunner — no paid calls, no real terminal.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("textual")
+
+from murari.chat import ChatSession
+from murari.cli import _resolve_chat_session, main
+from murari.config import Config
+from murari.haiku import HaikuReply, MockHaikuModel
+from murari.runner import MockAgentRunner
+from murari.session import create_session, titled_topic
+from murari.tui import MurariApp, StatusBar, runs_remaining
+
+FIX = Path(__file__).parent / "fixtures" / "contract-v2"
+_ALL_ROLES = ("generate", "evaluate", "deepen", "oppose", "mutate", "weave")
+
+
+def _contracts() -> dict:
+    return {r: json.loads((FIX / f"{r}.json").read_text(encoding="utf-8")) for r in _ALL_ROLES}
+
+
+def _cfg(tmp_path, runs: int = 6) -> Config:
+    return Config(runs=runs, max_turns=15, model="m", home=tmp_path)
+
+
+def _app(tmp_path, fake_agent_cls, replies=(), *, topic="тема сесії", runs=6):
+    cfg = _cfg(tmp_path, runs)
+    session = create_session(cfg, topic)
+    runner = MockAgentRunner(_contracts(), on_run=fake_agent_cls())
+    model = MockHaikuModel(list(replies))
+    chat = ChatSession(cfg, session, runner, model, style="investigate")
+    return MurariApp(chat, cfg), session, runner, model
+
+
+_LEDGER_WITH_JOURNAL = (
+    "# LEDGER\n\n## Гіпотези\n- [H1][open] ідея\n\n## Прогони\n"
+    "- 1: generate(агент) → H1\n- 2: oppose(користувач) → H1 контраргумент\n"
+    "- 3: evaluate(агент) → H1 вердикт\n\n## Сухі прогони поспіль: 0\n"
+)
+
+
+# --- composition ---
+
+
+async def test_app_composes_three_panels_and_status_bar(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        assert app.query_one("#chat-log") is not None
+        assert app.query_one("#chat-input") is not None
+        assert app.query_one("#ledger-panel") is not None
+        assert app.query_one("#document-panel") is not None
+        bar = app.query_one("#status-bar", StatusBar)
+        text = str(bar.content)
+        assert "стиль investigate/full" in text and "idle" in text
+        await pilot.pause()
+
+
+async def test_panels_render_workspace_on_open(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    session.ledger_file.write_text(_LEDGER_WITH_JOURNAL, encoding="utf-8")
+    session.document_file.write_text("# ДОКУМЕНТ\nстан думки\n", encoding="utf-8")
+    async with app.run_test() as pilot:
+        assert "H1 [open]" in str(app.query_one("#ledger-panel").content)
+        assert "стан думки" in str(app.query_one("#document-panel").content)
+        await pilot.pause()
+
+
+# --- status-bar inputs ---
+
+
+def test_runs_remaining_counts_agent_moves_only(tmp_path):
+    cfg = _cfg(tmp_path, runs=6)
+    session = create_session(cfg, "тема")
+    assert runs_remaining(cfg, session) == 6  # no ledger yet
+    session.ledger_file.write_text(_LEDGER_WITH_JOURNAL, encoding="utf-8")
+    assert runs_remaining(cfg, session) == 4  # 2 agent moves; the user move is free
+
+
+# --- CLI wiring ---
+
+
+def _args(**kw) -> argparse.Namespace:
+    return argparse.Namespace(
+        session=kw.get("session"), new_topic=kw.get("new_topic"), name=kw.get("name")
+    )
+
+
+def test_session_resolution_shared_with_chat(tmp_path, capsys):
+    cfg = _cfg(tmp_path)
+    # bare → creates an empty session when none exist
+    s1 = _resolve_chat_session(_args(), cfg, MockHaikuModel())
+    assert s1 is not None and s1.read_topic() == ""
+    # bare again → reopens the most recent
+    s2 = _resolve_chat_session(_args(), cfg, MockHaikuModel())
+    assert s2.path == s1.path
+    # --new → Namer flow with the title heading
+    s3 = _resolve_chat_session(
+        _args(new_topic="нова тема"), cfg, MockHaikuModel([HaikuReply(text="Назва")])
+    )
+    assert s3.read_title() == "Назва"
+    # explicit bad path → None + printed error
+    assert _resolve_chat_session(_args(session=str(tmp_path / "nope")), cfg, None) is None
+    assert "cannot open session" in capsys.readouterr().err
+
+
+def test_tui_without_textual_prints_hint(tmp_path, monkeypatch, capsys):
+    cfg = _cfg(tmp_path)
+    create_session(cfg, titled_topic("Назва", "тема"))
+    monkeypatch.setitem(sys.modules, "murari.tui", None)  # simulate a missing extra
+    rc = main(["tui"], runner=MockAgentRunner({}), config=cfg, haiku=MockHaikuModel())
+    assert rc == 1
+    assert "pip install 'murari[tui]'" in capsys.readouterr().err

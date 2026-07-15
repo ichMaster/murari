@@ -18,8 +18,16 @@ chat = [
     # chat-layer path has a no-API fallback, and tests never import the SDK.
     "anthropic>=0.40",
 ]
+tui = [
+    # The Textual three-panel interface (v0.3). Optional: `murari tui` without it prints
+    # an install hint; chat/run/open/list never import it.
+    "textual>=1.0",
+]
 dev = [
     "pytest>=8",
+    # TUI tests drive the app headless via Textual's pilot (async).
+    "pytest-asyncio>=0.24",
+    "textual>=1.0",
     # Ruff pinned within a minor: deterministic format, stable `ruff format --check` in CI.
     "ruff>=0.15,<0.16",
 ]
@@ -38,6 +46,8 @@ version = { file = "VERSION" }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The agent is behind the AgentRunner seam and mocked — NO paid calls in tests.
+# TUI tests are async (Textual pilot); auto mode leaves the sync suite untouched.
+asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100

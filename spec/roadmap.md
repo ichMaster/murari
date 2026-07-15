@@ -258,13 +258,12 @@ the **v1.0.0 graduation** and belongs to Lumi — deliberately **outside** this 
 | `claude -p` (not the Agent SDK) for the prototype | 🔸 tentative |
 | **Trigger policy / turn routing**: кожна репліка проходить окремий Haiku-виклик-класифікатор — `document` (питання по наявному документу/самарі/розмова → ще один виклик Haiku над DOCUMENT.md) або `brainstorm <роль>` (записується внесок користувача і запускається Claude-агент на **один хід** цієї ролі — глибше класифікатор запускати не може); глибокі прогони — лише явною командою `/go [стиль] [глибина]` над темою сесії (тема задається на старті або живе в reopened сесії) | ✅ revised (2026-07-15, user decision) |
 | Policy also in the session directory's `.claude/settings.json` | 🔸 tentative |
-| Layout: chat on the left + right column (ledger/document) | 🔸 tentative |
+| Layout: chat on the left + right column — ledger on top, document below; status bar at the bottom | ✅ accepted (2026-07-16, MUR-018) |
 
 ## Open questions
 
 Each is closed no later than the phase where it gets in the way.
 
-- **Panel layout** (v0.3): chat on the left + right column, or three columns.
 - **Continuation surface** (v0.1–v0.3): how a session to continue is chosen — picker, path, or
   `/open <slug>` — and whether continuing writes in place or forks a timestamped copy.
 - **Per-role canon split** (post-v0.1): when to promote role modules to separate canon files.
