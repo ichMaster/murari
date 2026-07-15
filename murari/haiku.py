@@ -60,8 +60,9 @@ class AnthropicHaikuModel:
     """The real client. Key and SDK are resolved at call time so a keyless environment
     constructs fine and only fails (typed) when actually asked to complete."""
 
-    def __init__(self, config: Config, max_tokens: int = 2048) -> None:
-        # 2048 output tokens: enough for a summary of a whole large DOCUMENT.md, still cheap
+    def __init__(self, config: Config, max_tokens: int = 64_000) -> None:
+        # Haiku 4.5's maximum output (64K tokens). Responses are delivered via streaming —
+        # the SDK refuses non-streaming requests this large to avoid HTTP timeouts.
         self.config = config
         self.max_tokens = max_tokens
 
@@ -77,13 +78,15 @@ class AnthropicHaikuModel:
             raise HaikuError("the 'anthropic' SDK is not installed (pip install .[chat])") from e
         kwargs: dict = {"tools": tools} if tools else {}
         try:
-            resp = anthropic.Anthropic(api_key=key).messages.create(
+            client = anthropic.Anthropic(api_key=key)
+            with client.messages.stream(
                 model=self.config.chat_model,
                 max_tokens=self.max_tokens,
                 system=system,
                 messages=messages,
                 **kwargs,
-            )
+            ) as stream:
+                resp = stream.get_final_message()
         except Exception as e:  # API/network failure — callers decide how to degrade
             raise HaikuError(f"Haiku call failed: {e}") from e
         text_parts: list[str] = []
