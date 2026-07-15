@@ -21,6 +21,8 @@ DEFAULT_RUNS = 6
 DEFAULT_MAX_TURNS = 15
 DEFAULT_MODEL = "claude-opus-4-8"
 DEFAULT_RUN_TIMEOUT = 900  # seconds a single agent move may take before it is killed (15 min)
+# The Ведучий brain (v0.2 chat layer / Namer) — Messages API, billed to the metered key.
+DEFAULT_CHAT_MODEL = "claude-haiku-4-5"
 
 
 def load_dotenv(path: Path = ENV_FILE) -> None:
@@ -48,6 +50,8 @@ class Config:
     home: Path  # base dir (MURARI_HOME)
     # seconds a single move may take before it is killed (MURARI_RUN_TIMEOUT)
     run_timeout_s: int = DEFAULT_RUN_TIMEOUT
+    # Haiku chat model (MURARI_CHAT_MODEL) — the Ведучий/Namer brain, never the agent
+    chat_model: str = DEFAULT_CHAT_MODEL
 
     @property
     def sessions_dir(self) -> Path:
@@ -76,4 +80,5 @@ def load_config() -> Config:
         model=os.environ.get("MURARI_MODEL") or DEFAULT_MODEL,
         home=home_path,
         run_timeout_s=_int_env("MURARI_RUN_TIMEOUT", DEFAULT_RUN_TIMEOUT),
+        chat_model=os.environ.get("MURARI_CHAT_MODEL") or DEFAULT_CHAT_MODEL,
     )

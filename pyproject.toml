@@ -9,10 +9,15 @@ description = "A brainstorming tool where a role-playing agent generates ideas t
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "ichland" }]
-# No runtime deps yet — the orchestrator is stdlib-only.
-# `anthropic` (the Haiku chat layer) arrives in v0.2; `textual` (the TUI) in v0.3.
+# No required runtime deps — the orchestrator is stdlib-only.
+# `anthropic` (the Haiku chat layer) is optional (`.[chat]`); `textual` (the TUI) lands in v0.3.
 
 [project.optional-dependencies]
+chat = [
+    # The Haiku chat layer (Ведучий/Namer, Messages API). Optional by design: every
+    # chat-layer path has a no-API fallback, and tests never import the SDK.
+    "anthropic>=0.40",
+]
 dev = [
     "pytest>=8",
     # Ruff pinned within a minor: deterministic format, stable `ruff format --check` in CI.

@@ -18,6 +18,10 @@ from murari.ledger import Ledger, parse_ledger
 # The agent-maintained state files (not the raw run artifacts).
 _STATE_FILES = ("LEDGER.md", "SOURCES.md", "IDEAS.md", "DOCUMENT.md")
 
+# TOPIC.md's optional first line: `# <name>` — the session display name the chat layer
+# writes on `new` (v0.2 Namer). The agent still reads TOPIC.md as plain read-only input.
+_TITLE_LINE = re.compile(r"^#\s+(.+?)\s*$")
+
 
 class SessionError(ValueError):
     """Raised when a directory is not a valid session or cannot be created."""
@@ -67,6 +71,18 @@ class Session:
     def read_topic(self) -> str:
         return self.topic_file.read_text(encoding="utf-8")
 
+    def read_title(self) -> str | None:
+        """The session's display name — the `# <name>` heading atop TOPIC.md, or None when
+        the first non-empty line isn't a heading (pre-v0.2 sessions render unchanged)."""
+        if not self.topic_file.exists():
+            return None
+        for line in self.read_topic().splitlines():
+            if not line.strip():
+                continue
+            m = _TITLE_LINE.match(line.strip())
+            return m.group(1) if m else None
+        return None
+
     def read_ledger(self) -> Ledger | None:
         """Parsed LEDGER (or None if the agent hasn't written one yet). Raises LedgerError on
         a malformed ledger."""
@@ -78,6 +94,12 @@ class Session:
         return (
             self.document_file.read_text(encoding="utf-8") if self.document_file.exists() else None
         )
+
+
+def titled_topic(title: str, topic: str) -> str:
+    """Compose TOPIC.md content: the chat-written `# <name>` heading above the user's topic
+    (the topic body itself stays byte-identical below the heading)."""
+    return f"# {title.strip()}\n\n{topic}"
 
 
 def create_session(

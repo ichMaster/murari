@@ -18,6 +18,15 @@ from murari.runner import RunRequest  # noqa: E402
 from murari.session import Session  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_api_credentials(monkeypatch):
+    """Tests never make paid calls: strip any real Anthropic credentials from the environment
+    so the Haiku layer (v0.2 Namer/Ведучий) always takes its no-API fallback unless a test
+    injects a MockHaikuModel explicitly."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+
+
 class FakeAgent:
     """Scripted brainstormer: on each move it writes the workspace files the real agent would,
     so `is_dry`, the SOURCES delta, and the DOCUMENT-ownership guard all see real changes.

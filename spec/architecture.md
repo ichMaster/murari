@@ -39,6 +39,13 @@ Reading workspace files for the panels, launching `claude -p`, parsing JSON — 
 Python in the TUI, **not** a model decision. Agent output reaches Haiku as **data through
 code**, never as a tool it drives.
 
+The Haiku **model seam** (`murari/haiku.py`, v0.2) is the single gateway to the Messages API
+(metered `ANTHROPIC_API_KEY` from `.env`; the Opus agent never sees that key — the runner strips
+it). Its first user is the **Namer**: on `new` it asks Haiku for a short Ukrainian session title,
+written as a `# <name>` heading atop `input/TOPIC.md`, with a deterministic no-API `local_name`
+fallback (missing key / no SDK / offline) so naming never blocks; explicit `--name` skips the
+call entirely, and `list`/`open` display the name.
+
 ### Tier 2 — agent (brainstormer, role-parameterized)
 
 Claude Code headless: `claude -p` with the brainstormer canon. Model — **Opus 4.8**.
@@ -129,7 +136,7 @@ session-<timestamp>[-slug]/
 
 | file | role | written by |
 |---|---|---|
-| `TOPIC.md` | the user's **topic** (seeds are chat-derived from replies; never hand-authored) | chat layer (RO to agent) |
+| `TOPIC.md` | the user's **topic**, under an optional `# <name>` heading — the session display name (v0.2 Namer: Haiku title with a no-API local fallback; `--name` overrides); the body below the heading stays intact (seeds are chat-derived from replies; never hand-authored) | chat layer (RO to agent) |
 | `LEDGER.md` | full hypothesis state (H-ids, lineage, «випробувано» marks) + **run journal** + **`## Ранжування`** scores + **`## Аргументи`** за/проти + dry counter | all roles |
 | `SOURCES.md` | one line per source: url + what was taken | evaluating roles |
 | `IDEAS.md` | accumulated ideas with `born_from: search\|prior\|mutation\|user` | all roles |

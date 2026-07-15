@@ -27,6 +27,7 @@ from murari.engine import (
     EngineError,
     EngineResult,
 )
+from murari.haiku import AnthropicHaikuModel, HaikuModel, Namer
 from murari.ledger import LedgerError
 from murari.runner import AgentRunner, ClaudeCliRunner
 from murari.session import (
@@ -35,6 +36,7 @@ from murari.session import (
     create_session,
     list_sessions,
     open_session,
+    titled_topic,
 )
 
 
@@ -143,13 +145,20 @@ def _run_style(
     return 0
 
 
-def cmd_new(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
-    session = create_session(config, args.topic, args.name)
-    print(f"created {session.path}")
+def cmd_new(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
+    # --name overrides the Namer entirely (no Haiku call); otherwise Haiku titles the topic
+    # with a no-API local fallback, so `new` never blocks on naming.
+    title = args.name or Namer(haiku).name(args.topic)
+    session = create_session(config, titled_topic(title, args.topic), args.name)
+    print(f"created {session.path} — {title}")
     return _run_style(session, config, runner, args.style, args.depth, args.seed, args.moves)
 
 
-def cmd_open(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
+def cmd_open(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
     try:
         session = open_session(Path(args.session))
     except SessionError as e:
@@ -157,7 +166,13 @@ def cmd_open(args: argparse.Namespace, config: Config, runner: AgentRunner) -> i
         return 1
     topic = session.read_topic()
     print(f"session: {session.path}")
-    print("topic: " + (topic.splitlines()[0] if topic.strip() else "—"))
+    title = session.read_title()
+    if title:
+        print(f"name: {title}")
+    lines = [ln for ln in topic.splitlines() if ln.strip()]
+    if title and lines:  # skip the `# <name>` heading — show the topic body itself
+        lines = lines[1:]
+    print("topic: " + (lines[0] if lines else "—"))
     led = session.read_ledger()
     if led is None:
         print("ledger: (none yet)")
@@ -193,7 +208,9 @@ def _parse_targets(raw: str | None) -> list[str | None]:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
-def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
+def cmd_run(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
     try:
         session = open_session(Path(args.session))
     except SessionError as e:
@@ -224,13 +241,16 @@ def cmd_run(args: argparse.Namespace, config: Config, runner: AgentRunner) -> in
     return rc
 
 
-def cmd_list(args: argparse.Namespace, config: Config, runner: AgentRunner) -> int:
+def cmd_list(
+    args: argparse.Namespace, config: Config, runner: AgentRunner, haiku: HaikuModel | None
+) -> int:
     sessions = list_sessions(config)
     if not sessions:
         print("no sessions")
         return 0
     for s in sessions:
-        print(s.path.name)
+        title = s.read_title()
+        print(f"{s.path.name} — {title}" if title else s.path.name)
     return 0
 
 
@@ -242,11 +262,15 @@ def main(
     *,
     runner: AgentRunner | None = None,
     config: Config | None = None,
+    haiku: HaikuModel | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     config = config or load_config()
     runner = runner if runner is not None else ClaudeCliRunner(config)
-    return _COMMANDS[args.cmd](args, config, runner)
+    # The real Haiku model degrades to the local fallback when keyless/SDK-less, so this
+    # default stays offline-safe; tests inject MockHaikuModel to script it.
+    haiku = haiku if haiku is not None else AnthropicHaikuModel(config)
+    return _COMMANDS[args.cmd](args, config, runner, haiku)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -13,7 +13,14 @@ import pytest
 
 from murari import config as cfg
 
-_KEYS = ("MURARI_RUNS", "MURARI_MAX_TURNS", "MURARI_MODEL", "MURARI_HOME", "MURARI_RUN_TIMEOUT")
+_KEYS = (
+    "MURARI_RUNS",
+    "MURARI_MAX_TURNS",
+    "MURARI_MODEL",
+    "MURARI_HOME",
+    "MURARI_RUN_TIMEOUT",
+    "MURARI_CHAT_MODEL",
+)
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +42,7 @@ def test_defaults():
     assert c.max_turns == 15
     assert c.model == "claude-opus-4-8"
     assert c.run_timeout_s == 900
+    assert c.chat_model == "claude-haiku-4-5"
     assert c.home == cfg.PROJECT_ROOT / ".murari"
     assert c.sessions_dir == cfg.PROJECT_ROOT / ".murari" / "brainstorm-sessions"
 
@@ -45,12 +53,14 @@ def test_env_overrides(tmp_path):
     os.environ["MURARI_MODEL"] = "claude-sonnet-5"
     os.environ["MURARI_HOME"] = str(tmp_path / "home")
     os.environ["MURARI_RUN_TIMEOUT"] = "1800"
+    os.environ["MURARI_CHAT_MODEL"] = "claude-haiku-9"
     c = cfg.load_config()
     assert c.runs == 3
     assert c.max_turns == 8
     assert c.model == "claude-sonnet-5"
     assert c.home == tmp_path / "home"
     assert c.run_timeout_s == 1800
+    assert c.chat_model == "claude-haiku-9"
 
 
 def test_bad_int_falls_back():

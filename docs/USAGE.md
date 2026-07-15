@@ -46,10 +46,16 @@ murari run .murari/brainstorm-sessions/session-*-heat --style evolve
 
 | Command | What it does |
 |---|---|
-| `murari new "<тема>" [--name S] [--style K] [--moves N] [--seed J]` | Create a fresh session (writes `input/TOPIC.md`) **and** run one style over it. |
+| `murari new "<тема>" [--name S] [--style K] [--moves N] [--seed J]` | Create a fresh session (writes `input/TOPIC.md`, auto-named — see below) **and** run one style over it. |
 | `murari run <session-dir> [--style K] [--moves N] [--seed J]` | Run one style over an **existing** session (open-and-continue — the ledger grows, it isn't reset). |
-| `murari open <session-dir>` | Print a session's current state (topic, ledger summary, whether a document exists) **without running**. |
-| `murari list` | List all sessions, most recent first. |
+| `murari open <session-dir>` | Print a session's current state (name, topic, ledger summary, whether a document exists) **without running**. |
+| `murari list` | List all sessions, most recent first, each with its name. |
+
+**Session naming.** On `new`, Haiku (`MURARI_CHAT_MODEL`, metered `ANTHROPIC_API_KEY` from
+`.env`) titles the session in Ukrainian and writes the name as a `# <name>` heading atop
+`input/TOPIC.md`; with no key / no `anthropic` SDK / offline, a local fallback derives the name
+from the topic — naming never blocks and costs nothing in that case. An explicit `--name` is used
+as-is (no Haiku call). `list` and `open` show the name.
 
 **Options**
 
