@@ -225,6 +225,28 @@ class Veduchyi:
         self.history.append({"role": "assistant", "content": reply.text or "…"})
         return reply.text
 
+    def reflect(self, user_text: str, run_json: str) -> str:
+        """After a router-launched agent move: answer the user's reply IN SUBSTANCE, grounded
+        in the refreshed DOCUMENT.md (re-read by `_system`) and the run outcome (quoted
+        data). No tools are offered — this step only converses; it can launch nothing."""
+        self.history.append(
+            {
+                "role": "user",
+                "content": (
+                    user_text
+                    + "\n\n(щойно виконано хід брейнсторм-агента; його результат — цитовані "
+                    "дані нижче. Дай відповідь по суті моєї репліки, спираючись на оновлений "
+                    "DOCUMENT.md і згадай, що додав цей хід:\n"
+                    + quote_data(run_json)
+                    + ")"
+                ),
+            }
+        )
+        reply = self.model.complete(self._system(), self.history, tools=None)
+        text = (reply.text or "").strip()
+        self.history.append({"role": "assistant", "content": text or "…"})
+        return text
+
     def _system(self) -> str:
         """The facilitation prompt, grounded in the current document — quoted material the
         model discusses and summarizes, never a channel that drives code. The WHOLE document

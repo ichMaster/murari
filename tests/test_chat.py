@@ -80,15 +80,20 @@ def test_brainstorm_ask_records_and_runs_one_routed_move(tmp_path, fake_agent_cl
         [
             HaikuReply(text="brainstorm evaluate"),  # the router picks the agent move
             HaikuReply(text="generate"),  # detect: the user contributed an idea
-            HaikuReply(text="Суддя оцінив ідеї (джерела в LEDGER)"),  # presentation
+            HaikuReply(text="Так, твоя ідея X тримається: Суддя підтвердив H1."),  # reflect
         ],
     )
     out = chat.turn("а ще можна використати X")
     assert [req.role for req in runner.calls] == ["evaluate"]  # exactly one move
     assert "записано: твій хід Фантазера" in out
-    assert "Суддя оцінив ідеї" in out
+    assert "Так, твоя ідея X тримається" in out  # answered in substance, not a dry summary
     led = session.read_ledger()
     assert led.runs[0].executor == "користувач"  # the contribution kept its provenance
+    # the reflect step: no tools offered, the user's reply + the quoted run outcome passed
+    reflect_call = model.calls[2]
+    assert reflect_call["tools"] is None
+    reflect_msg = reflect_call["messages"][-1]["content"]
+    assert "а ще можна використати X" in reflect_msg and "<дані>" in reflect_msg
 
 
 def test_router_launches_at_most_one_move(tmp_path, fake_agent_cls):
@@ -98,12 +103,24 @@ def test_router_launches_at_most_one_move(tmp_path, fake_agent_cls):
         [
             HaikuReply(text="brainstorm generate"),
             HaikuReply(text="steering"),  # nothing to record — just run the move
-            HaikuReply(text="Фантазер накидав ідей"),
+            HaikuReply(text="Фантазер накидав ідей"),  # the reflect answer
         ],
     )
     out = chat.turn("накидай ідей")
     assert [req.role for req in runner.calls] == ["generate"]
     assert "Фантазер накидав ідей" in out
+
+
+def test_reflect_failure_falls_back_to_run_summary(tmp_path, fake_agent_cls):
+    # only the router and detect replies are scripted — reflect raises → local summary
+    chat, session, runner, model = _chat(
+        tmp_path,
+        fake_agent_cls,
+        [HaikuReply(text="brainstorm generate"), HaikuReply(text="steering")],
+    )
+    out = chat.turn("накидай ідей")
+    assert [req.role for req in runner.calls] == ["generate"]
+    assert "Прогін investigate/custom" in out  # the honest deterministic fallback
 
 
 def test_router_doubt_routes_to_document(tmp_path, fake_agent_cls):

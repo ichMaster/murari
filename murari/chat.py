@@ -18,6 +18,7 @@ Continuation is explicit: `murari chat <session>` reopens; nothing is pulled in 
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Iterable
 
@@ -36,7 +37,7 @@ from murari.planner import ROLE_NAMES, choose_style
 from murari.presenter import extract_seed, present_result
 from murari.runner import AgentRunner
 from murari.session import Session
-from murari.veduchyi import TOOL_NAME, Dispatcher, Refusal, Veduchyi
+from murari.veduchyi import TOOL_NAME, Dispatcher, Refusal, Veduchyi, result_payload
 
 _HELP = (
     "команди: /style [ключ] — стиль (без ключа: показати; ключі: "
@@ -103,7 +104,9 @@ class ChatSession:
             self.on_progress(text)
 
     def _launch_move(self, role: str, user_text: str) -> str:
-        """One move of `role` — all the router is allowed to launch (deeper runs are /go)."""
+        """One move of `role` — all the router is allowed to launch (deeper runs are /go).
+        After the move, Haiku answers the user's reply in substance over the refreshed
+        document (`reflect`); the dry run-summary is only the fallback."""
         note = f"хід {ROLE_NAMES[role]}а"
         self._announce(f"⚙ викликаю брейнсторм-агента: {note}…")
         seed = extract_seed(self.session.read_topic(), user_text, note)
@@ -118,7 +121,12 @@ class ChatSession:
         )
         if isinstance(outcome, Refusal):
             return f"хід відхилено: {outcome.reason}"
-        return f"{note}\n{self._present(outcome)}"
+        run_json = json.dumps(result_payload(outcome), ensure_ascii=False)
+        try:
+            answer = self.veduchyi.reflect(user_text, run_json)
+        except HaikuError:
+            answer = ""
+        return f"{note}\n{answer or self._present(outcome)}"
 
     def _present(self, res: EngineResult) -> str:
         try:
