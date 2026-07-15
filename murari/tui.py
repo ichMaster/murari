@@ -12,13 +12,14 @@ without the `[tui]` extra degrades to an install hint while everything else keep
 
 from __future__ import annotations
 
+from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, RichLog, Static
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Input, Markdown, RichLog, Static, Tree
 
 from murari.chat import ChatSession
 from murari.config import Config
-from murari.ledger import LedgerError
+from murari.ledger import Hypothesis, Ledger, LedgerError
 from murari.session import Session
 
 
@@ -47,31 +48,72 @@ class StatusBar(Static):
         )
 
 
-class LedgerPanel(Static):
-    """The ledger surface (v0.3 scaffold: a text summary; the lineage tree lands in
-    MUR-019). Read side only — the panel never writes workspace files."""
+def _node_label(led: Ledger, h: Hypothesis) -> str:
+    """One tree line per hypothesis: id, status, ★ scores, «випробувано», за/проти, text."""
+    parts = [f"{h.id} [{h.status}]"]
+    s = led.score(h.id)
+    if s is not None:
+        mark = "дж" if s.sourced else "чорн"
+        parts.append(f"★{s.evidence}{s.originality}{s.popularity}{s.explanatory}({mark})")
+    if h.tested:
+        parts.append(f"випробувано:{h.tested}")
+    args = led.arguments_for(h.id)
+    if args:
+        za = sum(1 for a in args if a.side == "за")
+        parts.append(f"{za}за/{len(args) - za}проти")
+    parts.append(h.text[:48])
+    return " ".join(parts)
+
+
+class LedgerPanel(VerticalScroll):
+    """The ledger surface: the lineage tree (a `combine` child appears under each parent)
+    with the run journal underneath. Read side only — the panel never writes files."""
+
+    def compose(self) -> ComposeResult:
+        yield Tree("LEDGER", id="ledger-tree")
+        yield Static(id="ledger-journal")
 
     def render_session(self, session: Session) -> None:
+        tree = self.query_one("#ledger-tree", Tree)
+        journal = self.query_one("#ledger-journal", Static)
+        tree.clear()
         try:
             led = session.read_ledger()
-        except LedgerError as e:
-            self.update(f"LEDGER не читається: {e}")
+        except LedgerError as e:  # malformed state renders as an error, the app lives on
+            journal.update(f"LEDGER не читається: {e}")
             return
         if led is None:
-            self.update("LEDGER ще порожній")
+            journal.update("LEDGER ще порожній")
             return
-        lines = [f"{h.id} [{h.status}] {h.text[:60]}" for h in led.hypotheses]
+        tree.root.expand()
+        nodes: dict[str, list] = {}  # hid → the tree nodes that carry it (combine: several)
+        for h in led.hypotheses:
+            label = Text(_node_label(led, h))  # plain text — `[open]` is not Rich markup
+            parents = [p for p in h.parents if p in nodes]
+            if parents:
+                added = [nodes[p][0].add(label, expand=True) for p in parents]
+            else:
+                added = [tree.root.add(label, expand=True)]
+            nodes[h.id] = added
+        lines = [f"прогін {r.n}: {r.move}({r.executor}) → {r.produced}" for r in led.runs]
         lines.append(f"сухих поспіль: {led.dry_streak}")
-        self.update("\n".join(lines))
+        journal.update("\n".join(lines))
 
 
-class DocumentPanel(Static):
-    """The working document, read-only to the user (accepted 2026-07-05: document wishes
-    are orders to Ткач through chat, never file edits)."""
+class DocumentPanel(VerticalScroll):
+    """The working document rendered as markdown — **read-only to the user** (accepted
+    2026-07-05: document wishes are orders to Ткач through chat, never file edits). The
+    panel deliberately contains no input-capable widget."""
+
+    last_markdown: str = ""  # what was last rendered (tests read this, not textual internals)
+
+    def compose(self) -> ComposeResult:
+        yield Markdown("", id="document-md")
 
     def render_session(self, session: Session) -> None:
         doc = session.read_document()
-        self.update(doc if doc else "DOCUMENT.md ще не написано (перший weave створить його)")
+        self.last_markdown = doc or "*DOCUMENT.md ще не написано — перший weave створить його.*"
+        self.query_one("#document-md", Markdown).update(self.last_markdown)
 
 
 class MurariApp(App):

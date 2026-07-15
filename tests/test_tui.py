@@ -15,13 +15,15 @@ import pytest
 
 pytest.importorskip("textual")
 
+from textual.widgets import Input, Static, Tree
+
 from murari.chat import ChatSession
 from murari.cli import _resolve_chat_session, main
 from murari.config import Config
 from murari.haiku import HaikuReply, MockHaikuModel
 from murari.runner import MockAgentRunner
 from murari.session import create_session, titled_topic
-from murari.tui import MurariApp, StatusBar, runs_remaining
+from murari.tui import DocumentPanel, MurariApp, StatusBar, runs_remaining
 
 FIX = Path(__file__).parent / "fixtures" / "contract-v2"
 _ALL_ROLES = ("generate", "evaluate", "deepen", "oppose", "mutate", "weave")
@@ -72,8 +74,70 @@ async def test_panels_render_workspace_on_open(tmp_path, fake_agent_cls):
     session.ledger_file.write_text(_LEDGER_WITH_JOURNAL, encoding="utf-8")
     session.document_file.write_text("# ДОКУМЕНТ\nстан думки\n", encoding="utf-8")
     async with app.run_test() as pilot:
-        assert "H1 [open]" in str(app.query_one("#ledger-panel").content)
-        assert "стан думки" in str(app.query_one("#document-panel").content)
+        tree = app.query_one("#ledger-tree", Tree)
+        assert any("H1 [open]" in str(n.label) for n in tree.root.children)
+        assert "стан думки" in app.query_one("#document-panel", DocumentPanel).last_markdown
+        await pilot.pause()
+
+
+# --- MUR-019: lineage tree, journal, read-only document ---
+
+_LINEAGE_LEDGER = (
+    "# LEDGER\n\n## Гіпотези\n"
+    "- [H1][confirmed] коренева — джерело: https://e.com/1 — випробувано: 2\n"
+    "- [H2][open] друга коренева\n"
+    "- [H3][open] мутант — parents: H1 — mutation: invert\n"
+    "- [H9][open] гібрид — parents: H1+H2 — mutation: combine\n"
+    "\n## Прогони\n- 1: generate(агент) → H1..H2\n"
+    "\n## Ранжування\n- H1 — доказ:3 ориг:4 попул:2 поясн:4 — джерела: так\n"
+    "\n## Аргументи\n### H1\n- ЗА: довід — джерело: https://e.com/a\n"
+    "- ПРОТИ: контра — джерело: https://e.com/b\n"
+    "\n## Сухі прогони поспіль: 1\n"
+)
+
+
+async def test_ledger_tree_shows_lineage_scores_and_journal(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        session.ledger_file.write_text(_LINEAGE_LEDGER, encoding="utf-8")
+        app.refresh_workspace()  # the re-read-on-completion seam
+        tree = app.query_one("#ledger-tree", Tree)
+        roots = {str(n.label).split()[0]: n for n in tree.root.children}
+        assert set(roots) == {"H1", "H2"}  # only true roots at the top level
+        h1_children = [str(n.label) for n in roots["H1"].children]
+        assert any(lbl.startswith("H3") for lbl in h1_children)
+        assert any(lbl.startswith("H9") for lbl in h1_children)
+        h2_children = [str(n.label) for n in roots["H2"].children]
+        assert any(lbl.startswith("H9") for lbl in h2_children)  # combine → under BOTH parents
+        h1_label = str(roots["H1"].label)
+        assert "★3424(дж)" in h1_label and "випробувано:2" in h1_label and "1за/1проти" in h1_label
+        journal = str(app.query_one("#ledger-journal", Static).content)
+        assert "прогін 1: generate(агент)" in journal and "сухих поспіль: 1" in journal
+        await pilot.pause()
+
+
+async def test_document_panel_is_readonly_markdown(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        panel = app.query_one("#document-panel", DocumentPanel)
+        assert "ще не написано" in panel.last_markdown  # empty state before the first weave
+        session.document_file.write_text("# ДОКУМЕНТ\n**стан** аналізу\n", encoding="utf-8")
+        app.refresh_workspace()
+        assert "**стан** аналізу" in panel.last_markdown
+        # read-only pinned: the document surface contains no input-capable widget
+        assert not panel.query(Input) and not panel.query("TextArea")
+        assert len(app.query(Input)) == 1  # the only Input in the app is the chat input
+        await pilot.pause()
+
+
+async def test_malformed_ledger_renders_error_without_crash(tmp_path, fake_agent_cls):
+    app, session, runner, model = _app(tmp_path, fake_agent_cls)
+    async with app.run_test() as pilot:
+        session.ledger_file.write_text("це не ledger взагалі", encoding="utf-8")
+        app.refresh_workspace()
+        journal = str(app.query_one("#ledger-journal", Static).content)
+        assert "LEDGER не читається" in journal
+        assert app.query_one("#chat-input") is not None  # the app is still alive
         await pilot.pause()
 
 
