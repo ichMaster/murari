@@ -112,6 +112,7 @@ async def test_ledger_tree_shows_lineage_scores_and_journal(tmp_path, fake_agent
         assert any(lbl.startswith("H9") for lbl in h2_children)  # combine → under BOTH parents
         h1_label = str(roots["H1"].label)
         assert "★3424(дж)" in h1_label and "випробувано:2" in h1_label and "1за/1проти" in h1_label
+        assert "коренева" in h1_label  # the full text, not a truncated prefix
         journal = str(app.query_one("#ledger-state", Static).content)
         assert "сухих поспіль: 1" in journal and "прогін" not in journal
         await pilot.pause()

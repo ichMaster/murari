@@ -13,6 +13,7 @@ without the `[tui]` extra degrades to an install hint while everything else keep
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -114,7 +115,9 @@ def _node_label(led: Ledger, h: Hypothesis) -> str:
     if args:
         za = sum(1 for a in args if a.side == "за")
         parts.append(f"{za}за/{len(args) - za}проти")
-    parts.append(h.text[:48])
+    # the FULL hypothesis text (no truncation — the tree scrolls horizontally);
+    # the born_from provenance tag is display noise here
+    parts.append(re.sub(r"\s*—\s*born_from:\s*\S+", "", h.text))
     return " ".join(parts)
 
 
